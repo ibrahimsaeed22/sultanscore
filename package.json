@@ -1,0 +1,14 @@
+{
+  "name": "match-center",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Football fixtures, live scores and stats (Egyptian league + European leagues)",
+  "scripts": {
+    "sync": "cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/cli": "^6.2.0",
+    "@capacitor/core": "^6.2.0"
+  }
+}

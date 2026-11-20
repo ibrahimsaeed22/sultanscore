@@ -1,0 +1,11 @@
+{
+  "appId": "com.matchcenter.app",
+  "appName": "مركز المباريات",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "backgroundColor": "#f3f6f4"
+  }
+}
