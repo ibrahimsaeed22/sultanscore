@@ -3,16 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<title>مركز المباريات</title>
-<meta name="theme-color" content="#059669">
+<title>SultanScore</title>
+<meta name="theme-color" content="#005A9C">
 <style>
 :root{
-  --bg:#f3f6f4;--card:#fff;--ink:#14231c;--muted:#66786f;--line:#e1e9e4;
-  --brand:#059669;--brand2:#0d9488;--soft:#e7f6ef;--live:#e11d48;--warn:#b45309;--shadow:0 4px 18px rgba(10,60,40,.07);
+  --bg:#eaf4fa;--card:#fff;--ink:#1b365d;--muted:#5b7286;--line:#d3e6f2;
+  --brand:#005a9c;--brand2:#60c1e5;--soft:#d9edf9;--live:#e11d48;--warn:#b45309;--shadow:0 4px 18px rgba(27,54,93,.08);
   --nav:62px;
 }
 @media (prefers-color-scheme:dark){
-  :root{--bg:#0c1511;--card:#14201a;--ink:#e8f3ed;--muted:#8fa69a;--line:#22332a;--soft:#17332a;--shadow:none}
+  :root{--bg:#0a1c2e;--card:#12293f;--ink:#e6f2fa;--muted:#8fb4cc;--line:#1e3a52;--soft:#16324a;--shadow:none}
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 [hidden]{display:none!important}
@@ -21,6 +21,8 @@ body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Naskh Arabic",A
 #app{position:fixed;inset:0;display:flex;flex-direction:column}
 header.top{flex:none;padding:calc(env(safe-area-inset-top) + 10px) 14px 8px;display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg)}
 header.top h1{font-size:19px;margin:0}
+.brand{display:flex;align-items:center;gap:8px;min-width:0}
+.brand img{width:34px;height:34px;object-fit:contain;flex:none}
 .tools{display:flex;gap:6px}
 .chip{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:999px;padding:7px 12px;font:inherit;font-size:13px;cursor:pointer;white-space:nowrap}
 .chip.on{background:var(--brand);border-color:var(--brand);color:#fff}
@@ -39,7 +41,7 @@ nav.tabs .dot{position:absolute;top:9px;inset-inline-start:calc(50% + 8px);min-w
 .day b{display:block;font-size:15px;line-height:1.15}
 .day span{font-size:10.5px;color:var(--muted)}
 .day.on{background:var(--brand);border-color:var(--brand);color:#fff}
-.day.on span{color:#d6f5e8}
+.day.on span{color:#a0e0ef}
 .day.today:not(.on){border-color:var(--brand)}
 .filters{display:flex;gap:8px;overflow-x:auto;padding:2px 1px 10px;scrollbar-width:none}
 .filters::-webkit-scrollbar{display:none}
@@ -115,18 +117,64 @@ h3.sec{font-size:13px;color:var(--muted);margin:14px 2px 8px}
 .ev .who{flex:1;min-width:0}
 .ev .who small{display:block;color:var(--muted);font-size:11.5px}
 .setup{padding:40px 22px;text-align:center}
+.updatebar{flex:none;margin:0 14px 8px;padding:10px 12px;border-radius:14px;background:var(--brand);color:#fff;display:flex;align-items:center;gap:10px}
+.updatebar img{width:34px;height:34px;object-fit:contain;flex:none}
+.updatebar .ut{flex:1;min-width:0;font-size:13px;line-height:1.35}
+.updatebar .ut b{display:block;font-size:14px}
+.updatebar button{flex:none;border:0;border-radius:999px;padding:8px 12px;font:inherit;font-size:13px;font-weight:700;background:#fff;color:var(--brand);cursor:pointer}
+.updatebar .ux{flex:none;border:0;background:none;color:#fff;font-size:16px;cursor:pointer;padding:4px}
 .setup code{direction:ltr;display:inline-block;background:var(--soft);padding:2px 8px;border-radius:8px}
+.league h2{cursor:pointer}
+.league h2:active{opacity:.7}
+.tbl{display:flex;flex-direction:column;gap:6px}
+.trow{display:grid;grid-template-columns:24px 1fr 28px 48px 34px 62px;align-items:center;gap:5px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:9px 10px;font-size:13px}
+.trow.head{background:var(--soft);font-weight:700;color:var(--muted);font-size:12px;border:0}
+.trow .pos{font-weight:800;text-align:center;color:var(--brand)}
+.trow .nm{display:flex;align-items:center;gap:8px;min-width:0;font-weight:600}
+.trow .nm .badge{width:24px;height:24px}
+.trow .nm span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.trow b{text-align:center}
+.trow b.pts{font-size:15px}
+.srow{display:grid;grid-template-columns:26px 1fr auto;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px;font-size:13.5px}
+.srow .rank{font-weight:800;text-align:center;color:var(--brand)}
+.srow .who b{display:block}
+.srow .who span{font-size:12px;color:var(--muted)}
+.srow .g{font-weight:800;font-size:18px;text-align:end}
+.srow .g small{display:block;font-size:11px;color:var(--muted);font-weight:400}
+.xi{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.xi .ev{margin-bottom:0}
+.xi .num{flex:none;width:26px;text-align:center;font-weight:800;color:var(--brand)}
+.xi .pos{flex:none;width:30px;text-align:center;font-size:11.5px;font-weight:700;color:var(--muted)}
+.luhead{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:4px 2px 8px}
+.luhead b{font-size:14.5px}
+.luhead span{font-size:12.5px;color:var(--muted)}
+/* form dots (W green / D grey / L red) and player ratings — our own blue-first style */
+.formdots{display:flex;gap:4px;align-items:center}
+.fdot{width:19px;height:19px;border-radius:50%;display:grid;place-items:center;font-size:10px;font-weight:800;color:#fff}
+.fdot.w{background:#16a34a}
+.fdot.d{background:#94a3b8}
+.fdot.l{background:#e11d48}
+.formrow{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:9px 10px;margin-bottom:6px;font-size:13.5px;font-weight:600}
+.formrow .formdots{flex:none}
+.rating{flex:none;min-width:34px;text-align:center;font-size:12px;font-weight:800;border-radius:999px;padding:2px 7px;background:var(--soft);color:var(--brand)}
+.rating.good{background:var(--brand);color:#fff}
+.h2hsum{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:4px 0 12px}
+.h2hsum div{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 6px;text-align:center}
+.h2hsum b{display:block;font-size:20px;color:var(--brand)}
+.h2hsum span{font-size:11.5px;color:var(--muted)}
+.trow .formdots{justify-content:flex-end}
 </style>
 </head>
 <body>
 <div id="app">
   <header class="top">
-    <h1 id="title"></h1>
+    <div class="brand"><img src="icon.png" alt="SultanScore logo" onerror="this.style.display='none'"><h1 id="title"></h1></div>
     <div class="tools">
       <button id="refBtn" class="chip" type="button" aria-label="refresh">↻</button>
       <button id="langBtn" class="chip" type="button"></button>
     </div>
   </header>
+  <div id="updateBar" hidden></div>
   <div class="scroll" id="view"></div>
   <nav class="tabs" id="tabs"></nav>
 </div>
@@ -139,10 +187,12 @@ h3.sec{font-size:13px;color:var(--muted);margin:14px 2px 8px}
 
 const BASE = String((window.APP_CONFIG && window.APP_CONFIG.API_BASE) || '').replace(/\/+$/, '');
 const CONFIGURED = /^https?:\/\//.test(BASE) && !/YOUR-WORKER/i.test(BASE);
+// Must match package.json and the Worker's LATEST_VERSION.version — bump all three together on every release.
+const APP_VERSION = '1.1.0';
 
 const I18N = {
   ar: {
-    title: 'مركز المباريات', matches: 'المباريات', live: 'مباشر', search: 'بحث', myTeams: '⭐ فرقي', all: 'الكل',
+    title: 'SultanScore', matches: 'المباريات', live: 'مباشر', search: 'بحث', myTeams: '⭐ فرقي', all: 'الكل',
     today: 'النهارده', tomorrow: 'بكرة', yesterday: 'امبارح', pickDate: 'اختر تاريخ',
     count: '{n} مباراة', empty: 'مفيش مباريات في اليوم ده', emptyMine: 'مفيش مباريات لفرقك المفضلة في اليوم ده',
     liveEmpty: 'مفيش مباريات مباشرة دلوقتي', liveNote: 'بتتحدث تلقائياً (ممكن يبقى فيه تأخير دقيقة أو اتنين)', partial: 'أحد مصادر البيانات مش متاح دلوقتي، فممكن تنقص بعض المباريات.', noStatsSrc: 'الإحصائيات التفصيلية مش متاحة للمباراة دي',
@@ -154,10 +204,16 @@ const I18N = {
     noEvents: 'مفيش أحداث لسه', next: 'القادمة', last: 'آخر النتائج', back: 'رجوع', updated: 'آخر تحديث {t}',
     setupT: 'محتاج ربط التطبيق بالسيرفر', setupB: 'افتح الملف {f} وحط عنوان السيرفر بتاعك في API_BASE، وبعدين ابني التطبيق تاني. الخطوات في ملف README.',
     langBtn: 'English', venue: 'الملعب', round: 'الجولة', goal: 'هدف', own: 'هدف عكسي', pen: 'ركلة جزاء', missPen: 'ضربة جزاء ضائعة',
-    yellow: 'إنذار', red: 'طرد', sub: 'تبديل', var: 'مراجعة الفيديو', assist: 'تمريرة', in: 'دخل', vs: 'ضد'
+    yellow: 'إنذار', red: 'طرد', sub: 'تبديل', var: 'مراجعة الفيديو', assist: 'تمريرة', in: 'دخل', vs: 'ضد',
+    standings: 'الترتيب', scorers: 'الهدافين', lineups: 'التشكيلات', formation: 'التشكيلة', coach: 'المدرب',
+    startingXI: 'التشكيلة الأساسية', subs: 'البدلاء', noStandings: 'جدول الترتيب مش متاح للدوري ده', noScorers: 'الهدافين مش متاحين للدوري ده',
+    noLineups: 'التشكيلات هتظهر قبل المباراة', goals: 'أهداف', assists: 'تمريرات حاسمة', playedShort: 'لعب', pointsShort: 'نقاط', tapLeague: 'اضغط على اسم الدوري لعرض الترتيب والهدافين',
+    h2h: 'المواجهات', form: 'المستوى', formShort: 'الشكل', rating: 'التقييم', lastMeetings: 'آخر المواجهات', wins: 'فوز', draws: 'تعادل', losses: 'خسارة',
+    noH2h: 'المواجهات المباشرة مش متاحة للمباراة دي', homeWins: 'فوز صاحب الأرض', awayWins: 'فوز الضيف',
+    updateT: 'في تحديث جديد!', updateB: 'نزلت نسخة جديدة من SultanScore', updateBtn: 'حمّل التحديث', updateLater: 'بعدين'
   },
   en: {
-    title: 'Match Center', matches: 'Matches', live: 'Live', search: 'Search', myTeams: '⭐ My teams', all: 'All',
+    title: 'SultanScore', matches: 'Matches', live: 'Live', search: 'Search', myTeams: '⭐ My teams', all: 'All',
     today: 'Today', tomorrow: 'Tomorrow', yesterday: 'Yesterday', pickDate: 'Pick a date',
     count: '{n} matches', empty: 'No matches on this day', emptyMine: 'No matches for your favourite teams on this day',
     liveEmpty: 'No live matches right now', liveNote: 'Updates automatically (may lag by a minute or two)', partial: 'One data source is unavailable right now, so some matches may be missing.', noStatsSrc: 'Detailed statistics are not available for this match',
@@ -169,7 +225,13 @@ const I18N = {
     noEvents: 'No events yet', next: 'Upcoming', last: 'Recent results', back: 'Back', updated: 'Updated {t}',
     setupT: 'Connect the app to your server', setupB: 'Open {f} and put your server address in API_BASE, then rebuild the app. Steps are in the README.',
     langBtn: 'العربية', venue: 'Venue', round: 'Round', goal: 'Goal', own: 'Own goal', pen: 'Penalty', missPen: 'Missed penalty',
-    yellow: 'Yellow card', red: 'Red card', sub: 'Substitution', var: 'VAR', assist: 'Assist', in: 'In', vs: 'vs'
+    yellow: 'Yellow card', red: 'Red card', sub: 'Substitution', var: 'VAR', assist: 'Assist', in: 'In', vs: 'vs',
+    standings: 'Standings', scorers: 'Top scorers', lineups: 'Lineups', formation: 'Formation', coach: 'Coach',
+    startingXI: 'Starting XI', subs: 'Substitutes', noStandings: 'Standings are not available for this league', noScorers: 'Top scorers are not available for this league',
+    noLineups: 'Lineups will appear before the match', goals: 'Goals', assists: 'Assists', playedShort: 'P', pointsShort: 'Pts', tapLeague: 'Tap a league name to see standings and top scorers',
+    h2h: 'Head-to-head', form: 'Form', formShort: 'Form', rating: 'Rating', lastMeetings: 'Last meetings', wins: 'Wins', draws: 'Draws', losses: 'Losses',
+    noH2h: 'Head-to-head is not available for this match', homeWins: 'Home wins', awayWins: 'Away wins',
+    updateT: 'A new update is out!', updateB: 'A new version of SultanScore is available', updateBtn: 'Get the update', updateLater: 'Later'
   }
 };
 const LEAGUE_AR = { 233: 'الدوري المصري الممتاز', 39: 'الدوري الإنجليزي الممتاز', 140: 'الدوري الإسباني', 135: 'الدوري الإيطالي', 78: 'الدوري الألماني', 61: 'الدوري الفرنسي', 94: 'الدوري البرتغالي', 88: 'الدوري الهولندي', 203: 'الدوري التركي', 144: 'الدوري البلجيكي', 179: 'الدوري الاسكتلندي', 2: 'دوري أبطال أوروبا', 3: 'الدوري الأوروبي', 848: 'دوري المؤتمر الأوروبي', 45: 'كأس الاتحاد الإنجليزي', 48: 'كأس الرابطة الإنجليزية', 143: 'كأس ملك إسبانيا', 137: 'كأس إيطاليا', 81: 'كأس ألمانيا', 66: 'كأس فرنسا', 1: 'كأس العالم', 4: 'يورو', 6: 'كأس أمم أفريقيا', 5: 'دوري الأمم الأوروبية' };
@@ -291,6 +353,7 @@ function groupedList(list) {
   [...g.values()].sort((a, b) => leagueRank(a.league.id) - leagueRank(b.league.id) || a.league.name.localeCompare(b.league.name)).forEach(gr => {
     const sec = el('section', 'league');
     const h = el('h2');
+    h.addEventListener('click', () => openPage({ type: 'league', id: gr.league.id, league: gr.league }));
     const u = safeUrl(gr.league.logo);
     if (u) { const im = document.createElement('img'); im.src = u; im.alt = ''; im.referrerPolicy = 'no-referrer'; im.onerror = () => im.remove(); h.appendChild(im); }
     h.appendChild(el('span', null, leagueName(gr.league)));
@@ -377,7 +440,9 @@ function viewMatches(root) {
   if (S.m.at) bar.appendChild(el('span', null, t('updated', { t: fmtTime(S.m.at / 1000) })));
   root.appendChild(bar);
   if (!list.length) { root.appendChild(stateBox('🗓️', S.mine ? t('emptyMine') : t('empty'))); return; }
+  root.appendChild(el('p', 'hint', t('tapLeague')));
   root.appendChild(groupedList(list));
+  if (list.some(f => String(f.id || '').startsWith('ss-'))) root.appendChild(el('p', 'hint', 'Powered by SportScore'));
 }
 
 /* ---------- live tab ---------- */
@@ -402,6 +467,7 @@ function viewLive(root) {
   if (S.l.partial) root.appendChild(el('div', 'warnbox', t('partial')));
   if (!S.l.fixtures.length) { root.appendChild(stateBox('📺', t('liveEmpty'))); return; }
   root.appendChild(groupedList(S.l.fixtures));
+  if (S.l.fixtures.some(f => String(f.id || '').startsWith('ss-'))) root.appendChild(el('p', 'hint', 'Powered by SportScore'));
 }
 
 /* ---------- search tab ---------- */
@@ -487,7 +553,38 @@ function renderPage() {
   ov.appendChild(head);
   const body = el('div', 'obody'); body.id = 'obody'; ov.appendChild(body);
   if (p.type === 'match') { p.tab = p.tab || 'stats'; loadMatch(p, false); pageTimer = setInterval(() => { if (!document.hidden && p.data && p.data.fixture.state === 'live') loadMatch(p, true); }, 20000); }
+  else if (p.type === 'league') { p.tab = p.tab || 'standings'; loadLeague(p); }
   else loadTeam(p);
+}
+
+/* ---------- form dots + ratings (FotMob-inspired, our own style) ---------- */
+function formDots(form) {
+  const wrap = el('div', 'formdots');
+  const list = typeof form === 'string' ? form.split('').filter(c => /[WDL]/.test(c)) : (Array.isArray(form) ? form : []);
+  list.slice(-5).forEach(c => wrap.appendChild(el('span', 'fdot ' + c.toLowerCase(), c)));
+  return wrap;
+}
+function ratingBadge(rating) {
+  if (rating == null || isNaN(+rating)) return null;
+  return el('span', 'rating' + (+rating >= 7 ? ' good' : ''), (+rating).toFixed(1));
+}
+async function loadH2H(p) {
+  if (p.h2hLoading || p.h2h) return;
+  p.h2hLoading = true;
+  const f = p.data && p.data.fixture;
+  if (!f) { p.h2hLoading = false; return; }
+  try {
+    const [h2h, home, away] = await Promise.all([
+      api('/h2h?home=' + encodeURIComponent(f.home.id) + '&away=' + encodeURIComponent(f.away.id), 'h2h').catch(() => null),
+      api('/team/' + encodeURIComponent(f.home.id), 'h2hfh').catch(() => null),
+      api('/team/' + encodeURIComponent(f.away.id), 'h2hfa').catch(() => null)
+    ]);
+    if (S.stack[S.stack.length - 1] !== p) return;
+    p.h2h = h2h; p.formHome = home && home.form; p.formAway = away && away.form;
+    p.h2hErr = !h2h;
+  } catch (e) { p.h2hErr = true; }
+  p.h2hLoading = false;
+  if (S.stack[S.stack.length - 1] === p && p.tab === 'h2h') drawMatch(p);
 }
 
 async function loadMatch(p, silent) {
@@ -522,12 +619,78 @@ function drawMatch(p) {
   if (p.stale) body.appendChild(el('div', 'warnbox', t('stale')));
 
   const seg = el('div', 'seg');
-  [['stats', t('stats')], ['events', t('events')]].forEach(([k, label]) => {
+  [['stats', t('stats')], ['events', t('events')], ['lineups', t('lineups')], ['h2h', t('h2h')]].forEach(([k, label]) => {
     const b = el('button', p.tab === k ? 'on' : '', label); b.type = 'button';
     b.addEventListener('click', () => { p.tab = k; drawMatch(p); }); seg.appendChild(b);
   });
   body.appendChild(seg);
 
+  if (p.tab === 'h2h') {
+    if (!p.h2h && !p.h2hLoading) loadH2H(p);
+    // Form strips for both teams (from /team, cached by the Worker).
+    [[f.home, p.formHome], [f.away, p.formAway]].forEach(([team, form]) => {
+      if (!form || !form.length) return;
+      const row = el('div', 'formrow');
+      row.appendChild(el('span', null, team.name + ' · ' + t('form')));
+      row.appendChild(formDots(form));
+      body.appendChild(row);
+    });
+    if (p.h2hLoading) { body.appendChild(skeletons(3)); body.scrollTop = keep; return; }
+    const h = p.h2h;
+    if (!h || h.unavailable || p.h2hErr) { body.appendChild(stateBox('🤝', t('noH2h'))); body.scrollTop = keep; return; }
+    const s = h.summary || { homeWins: 0, draws: 0, awayWins: 0 };
+    const sum = el('div', 'h2hsum');
+    [[s.homeWins, t('homeWins')], [s.draws, t('draws')], [s.awayWins, t('awayWins')]].forEach(([n, label]) => {
+      const cell = el('div'); cell.appendChild(el('b', null, String(n))); cell.appendChild(el('span', null, label)); sum.appendChild(cell);
+    });
+    body.appendChild(sum);
+    if (h.matches && h.matches.length) {
+      body.appendChild(el('h3', 'sec', t('lastMeetings')));
+      h.matches.forEach(m => body.appendChild(matchCard(m)));
+    } else body.appendChild(stateBox('🤝', t('noH2h')));
+    body.scrollTop = keep;
+    return;
+  }
+
+  if (p.tab === 'lineups') {
+    const lu = d.lineups || {};
+    if (!lu.home && !lu.away) body.appendChild(stateBox('👥', t('noLineups')));
+    else {
+      [[f.home, lu.home], [f.away, lu.away]].forEach(([team, side]) => {
+        if (!side) return;
+        const head = el('div', 'luhead');
+        head.appendChild(el('b', null, team.name));
+        head.appendChild(el('span', null, (side.formation ? t('formation') + ': ' + side.formation : '') + (side.coach ? ' · ' + t('coach') + ': ' + side.coach : '')));
+        body.appendChild(head);
+        body.appendChild(el('h3', 'sec', t('startingXI')));
+        const xi = el('div', 'xi');
+        (side.xi || []).forEach(pl => {
+          const r = el('div', 'ev');
+          r.appendChild(el('div', 'num', pl.number != null ? String(pl.number) : '–'));
+          r.appendChild(el('div', 'pos', pl.pos || ''));
+          r.appendChild(el('div', 'who', pl.player || '—'));
+          const rb = ratingBadge(pl.rating); if (rb) r.appendChild(rb);
+          xi.appendChild(r);
+        });
+        body.appendChild(xi);
+        if (side.subs && side.subs.length) {
+          body.appendChild(el('h3', 'sec', t('subs')));
+          const sb = el('div', 'xi');
+          side.subs.forEach(pl => {
+            const r = el('div', 'ev');
+            r.appendChild(el('div', 'num', pl.number != null ? String(pl.number) : '–'));
+            r.appendChild(el('div', 'pos', pl.pos || ''));
+            r.appendChild(el('div', 'who', pl.player || '—'));
+            const rb = ratingBadge(pl.rating); if (rb) r.appendChild(rb);
+            sb.appendChild(r);
+          });
+          body.appendChild(sb);
+        }
+      });
+    }
+    body.scrollTop = keep;
+    return;
+  }
   if (p.tab === 'stats') {
     const hs = (d.stats || []).find(x => x.team === f.home.id), as = (d.stats || []).find(x => x.team === f.away.id);
     if (!hs || !as) body.appendChild(stateBox('📊', d.noStats ? t('noStatsSrc') : t('noStats')));
@@ -577,6 +740,73 @@ function drawMatch(p) {
   body.scrollTop = keep;
 }
 
+/* ---------- league page: standings & top scorers ---------- */
+async function loadLeague(p) {
+  const body = $('obody'); if (!body) return;
+  $('ottl').textContent = leagueName(p.league);
+  const draw = () => {
+    const b = $('obody'); if (!b || S.stack[S.stack.length - 1] !== p) return;
+    const keep = b.scrollTop;
+    b.textContent = '';
+    const seg = el('div', 'seg');
+    [['standings', t('standings')], ['scorers', t('scorers')]].forEach(([k, label]) => {
+      const btn = el('button', p.tab === k ? 'on' : '', label); btn.type = 'button';
+      btn.addEventListener('click', () => { p.tab = k; draw(); loadLeague(p, true); }); seg.appendChild(btn);
+    });
+    b.appendChild(seg);
+    if (p.err) b.appendChild(errBox(() => loadLeague(p)));
+    if (p.loading) { b.appendChild(skeletons(4)); return; }
+    if (p.tab === 'standings') {
+      const rows = (p.standings && p.standings.standings) || [];
+      if (!rows.length) { b.appendChild(stateBox('🏆', t('noStandings'))); return; }
+      const tbl = el('div', 'tbl');
+      const head = el('div', 'trow head');
+      ['', '', t('playedShort'), 'W/D/L', t('pointsShort'), t('formShort')].forEach(x => head.appendChild(el('span', null, x)));
+      // header uses the same grid: position, team, played, W-D-L, points
+      tbl.appendChild(head);
+      rows.forEach(r => {
+        const row = el('div', 'trow');
+        row.appendChild(el('div', 'pos', String(r.position)));
+        const nm = el('div', 'nm');
+        nm.appendChild(logo(r.team));
+        nm.appendChild(el('span', null, r.team.name));
+        row.appendChild(nm);
+        row.appendChild(el('b', null, String(r.played)));
+        row.appendChild(el('b', null, r.won + '-' + r.drawn + '-' + r.lost));
+        row.appendChild(el('b', 'pts', String(r.points)));
+        row.appendChild(formDots(r.form));
+        tbl.appendChild(row);
+      });
+      b.appendChild(tbl);
+    } else {
+      const rows = (p.scorers && p.scorers.scorers) || [];
+      if (!rows.length) { b.appendChild(stateBox('⚽', t('noScorers'))); return; }
+      rows.forEach((s, i) => {
+        const row = el('div', 'srow');
+        row.appendChild(el('div', 'rank', String(i + 1)));
+        const who = el('div', 'who');
+        who.appendChild(el('b', null, s.player));
+        who.appendChild(el('span', null, s.team.name + (s.assists ? ' · ' + s.assists + ' ' + t('assists') : '')));
+        row.appendChild(who);
+        const g = el('div', 'g', String(s.goals));
+        g.appendChild(el('small', null, t('goals')));
+        row.appendChild(g);
+        b.appendChild(row);
+      });
+    }
+    b.scrollTop = keep;
+  };
+  p.loading = true; p.err = false; draw();
+  try {
+    if (p.tab === 'standings' && !p.standings) p.standings = await api('/standings?league=' + p.id, 'lg');
+    if (p.tab === 'scorers' && !p.scorers) p.scorers = await api('/scorers?league=' + p.id, 'lg');
+  } catch (e) {
+    if (e && e.name === 'AbortError') return;
+    p.err = true;
+  }
+  p.loading = false; draw();
+}
+
 async function loadTeam(p) {
   const body = $('obody'); $('ottl').textContent = p.team.name;
   const draw = () => {
@@ -590,6 +820,12 @@ async function loadTeam(p) {
     const st = el('button', 'star' + (isFav(p.team.id) ? ' on' : ''), isFav(p.team.id) ? '★' : '☆'); st.type = 'button';
     st.addEventListener('click', () => { toggleFav(p.team); draw(); });
     head.appendChild(st); b.appendChild(head);
+    if (p.form && p.form.length) {
+      const fr = el('div', 'formrow');
+      fr.appendChild(el('span', null, t('form')));
+      fr.appendChild(formDots(p.form));
+      b.appendChild(fr);
+    }
     if (p.loading) { b.appendChild(skeletons(3)); return; }
     if (p.err) { b.appendChild(errBox(() => loadTeam(p))); return; }
     const now = Date.now() / 1000;
@@ -599,7 +835,7 @@ async function loadTeam(p) {
     if (!next.length && !last.length) b.appendChild(stateBox('🗓️', t('empty')));
   };
   p.loading = true; p.err = false; draw();
-  try { const j = await api('/team/' + p.id, 'tp'); p.fixtures = j.fixtures || []; }
+  try { const j = await api('/team/' + p.id, 'tp'); p.fixtures = j.fixtures || []; p.form = j.form || []; }
   catch (e) { if (e && e.name === 'AbortError') return; p.err = true; p.fixtures = []; }
   p.loading = false; draw();
 }
@@ -637,18 +873,21 @@ function render() {
 
 $('langBtn').addEventListener('click', () => { lang = lang === 'ar' ? 'en' : 'ar'; store.set('mc-lang', lang); S.stack.length ? renderPage() : render(); });
 $('refBtn').addEventListener('click', () => {
-  if (S.stack.length) { const p = S.stack[S.stack.length - 1]; p.type === 'match' ? loadMatch(p, false) : loadTeam(p); return; }
+  if (S.stack.length) { const p = S.stack[S.stack.length - 1]; if (p.type === 'match') loadMatch(p, false); else if (p.type === 'league') { p.standings = null; p.scorers = null; loadLeague(p); } else loadTeam(p); return; }
   if (S.tab === 'matches') loadMatches(false); else if (S.tab === 'live') loadLive(false); else runSearch();
 });
 
-// Auto-refresh while the app is open: live scores every 20s, today's list every 30s.
+// Auto-refresh while the app is open: live scores every 20s, but ONLY on
+// the Live tab (quota-saving: one shared Worker cache serves all users, so
+// polling off-screen only burns the free API budget). Today's list
+// refreshes every 60s, and the live badge every 60s off the Live tab.
 let tick = 0;
 setInterval(() => {
   if (!CONFIGURED || document.hidden) return;
   tick++;
   if (S.tab === 'live' && !S.stack.length) loadLive(true);
   else if (S.tab !== 'live' && tick % 3 === 0) loadLive(true);  // keeps the live badge fresh (every 60s)
-  if (S.tab === 'matches' && !S.stack.length && S.date === todayStr() && tick % 2 === 0 && !S.m.loading) loadMatches(true);
+  if (S.tab === 'matches' && !S.stack.length && S.date === todayStr() && tick % 3 === 0 && !S.m.loading) loadMatches(true);
 }, 20000);
 document.addEventListener('visibilitychange', () => {
   if (document.hidden || !CONFIGURED) return;
@@ -657,7 +896,38 @@ document.addEventListener('visibilitychange', () => {
 });
 
 render();
-if (CONFIGURED) { loadMatches(false); loadLive(true); }
+if (CONFIGURED) { loadMatches(false); loadLive(true); checkUpdate(); }
+
+// Update check: ask the Worker which version is latest. If it is newer than
+// this build, show a banner with the new logo and a download button. The
+// user can dismiss it once per version (saved in localStorage), and the
+// banner never blocks the matches list if the check fails.
+function newerVersion(a, b) {
+  const pa = String(a || '').split('.').map(n => +n || 0), pb = String(b || '').split('.').map(n => +n || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) { if ((pa[i] || 0) > (pb[i] || 0)) return true; if ((pa[i] || 0) < (pb[i] || 0)) return false; }
+  return false;
+}
+async function checkUpdate() {
+  try {
+    const v = await api('/version');
+    if (!v || !v.version || !newerVersion(v.version, APP_VERSION)) return;
+    if (store.get('mc-update-dismissed', '') === v.version) return;
+    const bar = $('updateBar');
+    bar.textContent = '';
+    const im = document.createElement('img'); im.src = 'icon.png'; im.alt = ''; bar.appendChild(im);
+    const tx = el('div', 'ut'); tx.appendChild(el('b', null, t('updateT') + ' v' + v.version));
+    const notes = v.notes && (v.notes[lang] || v.notes.en);
+    tx.appendChild(document.createTextNode(t('updateB') + (notes ? ' — ' + notes : '')));
+    bar.appendChild(tx);
+    const go = el('button', null, t('updateBtn')); go.type = 'button';
+    go.addEventListener('click', () => { if (v.downloadUrl) window.open(v.downloadUrl, '_blank'); });
+    bar.appendChild(go);
+    const x = el('button', 'ux', '✕'); x.type = 'button'; x.setAttribute('aria-label', t('updateLater'));
+    x.addEventListener('click', () => { store.set('mc-update-dismissed', v.version); bar.hidden = true; bar.textContent = ''; });
+    bar.appendChild(x);
+    bar.hidden = false;
+  } catch (e) { /* no update banner if the server cannot be reached */ }
+}
 })();
 </script>
 </body>

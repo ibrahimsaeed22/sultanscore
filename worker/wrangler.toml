@@ -1,0 +1,40 @@
+name = "match-center-api"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
+
+# 1) Shared cache (free). Create it once:  npx wrangler kv namespace create CACHE
+#    then paste the id it prints here and remove the leading "#" on the 3 lines below.
+# [[kv_namespaces]]
+# binding = "CACHE"
+# id = "PASTE_THE_ID_HERE"
+
+# 2) Keys are secrets, never write them in this file:
+#    npx wrangler secret put FD_KEY      (football-data.org)
+#    npx wrangler secret put API_KEY     (API-Football)
+#    No key is needed for the ESPN or SportScore fallbacks — they are used
+#    only when the keyed providers fail for the same request, so the app
+#    keeps working. SportScore's free tier requires a visible
+#    "Powered by SportScore" attribution wherever its data is rendered.
+#
+# Quota-saving split (free tiers only, no paid plan needed):
+#   football-data.org first for its 12 competitions (10 req/min, no daily
+#   cap). API-Football ONLY for leagues FD does not cover (Egypt 233,
+#   cups, ...) plus stats/lineups/ratings/H2H, and it stops at 85 of its
+#   free 100 requests/day (budget guard in src/core.js, reported in
+#   /health as apiFootball.dailyUsed / dailyBudget). Enabling the KV
+#   namespace above is what makes ONE upstream request serve ALL users —
+#   without it each Worker isolate keeps its own memory cache and the
+#   100/day budget burns much faster.
+#
+# New endpoints (see README.md): /standings?league=<id>, /scorers?league=<id>,
+# /h2h?home=<id>&away=<id>, and lineups inside /fixture/:id. Fallback order
+# for fixtures/live: primary keyed provider -> other keyed provider ->
+# ESPN (no key) -> SportScore (no key) -> last cached copy with stale:true.
+# /health now reports per-source availability (configured / available) and
+# the API-Football daily budget, without ever revealing a secret.
+
+[vars]
+# Economy mode (longer cache, fewer upstream requests). Use "0" once you move to a paid plan.
+ECONOMY = "1"
+# Optional: restrict leagues by API-Football id, e.g. "233,39,140,135,78,61,2"
+# LEAGUES = ""

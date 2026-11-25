@@ -1,11 +1,11 @@
 {
   "appId": "com.matchcenter.app",
-  "appName": "مركز المباريات",
+  "appName": "SultanScore",
   "webDir": "www",
   "server": {
     "androidScheme": "https"
   },
   "android": {
-    "backgroundColor": "#f3f6f4"
+    "backgroundColor": "#eaf4fa"
   }
 }
