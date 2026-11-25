@@ -459,6 +459,40 @@ async function dayFromWithFallback(env, p, src, ds) {
 // One cached /fixtures/events call per fixture (1h — a finished match's
 // scorers never change), so enriching a day costs ~1 AF call per finished
 // match, and the daily budget guard still caps everything at 85/day.
+/* ---------- ESPN goalscorers (FD has no scorers anywhere) ---------- */
+// ESPN's public scoreboard carries every scoring play (minute, scorer,
+// team). One cached call per league+date; fixtures are matched to events by
+// normalised team names (both teams must match). Cached as [key, scorers]
+// pairs because the KV cache is JSON.
+function normTeam(s) {
+  return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+function pairKey(a, b) { const x = [normTeam(a), normTeam(b)].sort(); return x[0] + '|' + x[1]; }
+async function espnScoreboardScorers(env, leagueId, ds) {
+  const slug = ESPN_SLUG_BY_LEAGUE[leagueId];
+  if (!slug) return new Map();
+  const pairs = await cached(env, 'espn:scorers:' + leagueId + ':' + ds, 3600, async () => {
+    const j = await espnGet(slug + '/scoreboard', { dates: ds.replace(/-/g, '') });
+    const out = [];
+    (j.events || []).forEach(ev => {
+      const comp = (ev.competitions && ev.competitions[0]) || {};
+      const comps = comp.competitors || [];
+      const pick = side => comps.find(c => c.homeAway === side) || {};
+      const homeTid = String(((pick('home').team) || {}).id);
+      const scorers = (comp.details || []).filter(d => d.scoringPlay).map(d => {
+        const mm = /(\d+)'/.exec((d.clock && d.clock.displayValue) || '');
+        const ath = (d.athletesInvolved && d.athletesInvolved[0]) || {};
+        const tid = d.team && d.team.id != null ? String(d.team.id) : null;
+        return goalRow(mm ? +mm[1] : null, ath.displayName || ath.shortName, tid == null ? null : tid === homeTid ? 'home' : 'away', !!d.ownGoal);
+      }).filter(Boolean);
+      if (!scorers.length) return;
+      const hn = ((pick('home').team) || {}).displayName, an = ((pick('away').team) || {}).displayName;
+      if (hn && an) out.push([pairKey(hn, an), scorers]);
+    });
+    return out;
+  }).catch(() => []);
+  return new Map(pairs);
+}
 async function afGoalScorers(env, fixtureId, homeId, awayId) {
   return cached(env, 'af:scorers:' + fixtureId, 3600, async () => {
     const j = await afGet(env, 'fixtures/events', { fixture: fixtureId });
@@ -482,13 +516,25 @@ async function getRange(env, from, to) {
   const seen = new Set(), out = [];
   ok.forEach(r => r.fixtures.forEach(f => { if (f.ts >= from && f.ts < to && !seen.has(f.id)) { seen.add(f.id); out.push(f); } }));
   out.sort(sortFx);
-  // Goalscorers for finished API-Football fixtures (the only source for
-  // Egypt and the cups): at most 8 cached events calls per response.
-  const needSc = out.filter(f => f.state === 'finished' && String(f.id || '').startsWith('af-') && !(f.scorers && f.scorers.length));
-  await Promise.all(needSc.slice(0, 8).map(async f => {
+  // Goalscorers for finished fixtures. AF (Egypt/cups) via cached events
+  // calls, in parallel (max 8). FD has no scorers at all, so its fixtures
+  // are matched to ESPN's public scoreboard (one cached call per
+  // league+date, no key, no quota).
+  const needSc = out.filter(f => f.state === 'finished' && !(f.scorers && f.scorers.length));
+  const needAf = needSc.filter(f => String(f.id || '').startsWith('af-'));
+  const needFd = needSc.filter(f => String(f.id || '').startsWith('fd-'));
+  await Promise.all(needAf.slice(0, 8).map(async f => {
     const rows = await afGoalScorers(env, String(f.id).slice(3), String(f.home.id).replace('af-', ''), String(f.away.id).replace('af-', ''));
     if (rows.length) f.scorers = rows;
   }));
+  const byLeagueDate = new Map();
+  for (const f of needFd.slice(0, 12)) {
+    const key = f.league.id + ':' + utcDate(f.ts);
+    if (!byLeagueDate.has(key)) byLeagueDate.set(key, espnScoreboardScorers(env, f.league.id, utcDate(f.ts)));
+    const map = await byLeagueDate.get(key);
+    const rows = map.get(pairKey(f.home.name, f.away.name));
+    if (rows && rows.length) f.scorers = rows;
+  }
   const partial = settled.some(r => r.status === 'rejected');
   return { fixtures: out, stale: ok.some(r => r.stale) || undefined, partial: partial || undefined };
 }
