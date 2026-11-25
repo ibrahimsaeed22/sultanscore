@@ -40,9 +40,9 @@ const AF_DAILY_BUDGET = 85;
 // the version number here AND in package.json AND in www/index.html
 // (APP_VERSION) at the same time, or the banner will never show / never go away.
 const LATEST_VERSION = {
-  version: '1.1.0',
+  version: '1.1.1',
   downloadUrl: 'https://github.com/ibrahimsaeed22/sultanscore/releases',
-  notes: { ar: 'اللوجو الجديد واسم SultanScore', en: 'New logo and the SultanScore name' }
+  notes: { ar: 'اللوجو الجديد، الهدافين تحت النتيجة، التشكيلة على الملعب، تظبيط العربي', en: 'New logo, scorers under the score, lineup on the pitch, Arabic fixes' }
 };
 
 // League ids follow API-Football numbering (the app uses them for names/order).
