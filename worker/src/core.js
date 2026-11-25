@@ -465,13 +465,29 @@ async function dayFromWithFallback(env, p, src, ds) {
 // normalised team names (both teams must match). Cached as [key, scorers]
 // pairs because the KV cache is JSON.
 function normTeam(s) {
-  return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  // "Man City" / "Man Utd" (FD short names) vs "Manchester City" (ESPN).
+  return String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().replace(/\bman\b/g, 'manchester');
 }
-function pairKey(a, b) { const x = [normTeam(a), normTeam(b)].sort(); return x[0] + '|' + x[1]; }
+// Loose team-name match: FD short names ("LASK", "PSV", "Sl. Bratislava")
+// vs ESPN display names ("LASK Linz", "PSV Eindhoven", "Slovan Bratislava").
+const TEAM_STOP = new Set(['real', 'club', 'united', 'city', 'athletic', 'town', 'rovers', 'albion', 'county', 'cf', 'sc', 'ac', 'as', 'fc']);
+function teamMatch(a, b) {
+  a = normTeam(a); b = normTeam(b);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.startsWith(b) || b.startsWith(a)) return true;
+  // A shared distinctive word ("aek" in "PAE AEK" / "AEK Athens"), except
+  // a word that is the first word of both names ("Manchester" in both
+  // Manchester clubs — that is the city, not the club).
+  const ta = a.split(' ').filter(w => w.length >= 3 && !TEAM_STOP.has(w));
+  const tb = b.split(' ').filter(w => w.length >= 3 && !TEAM_STOP.has(w));
+  const firstA = a.split(' ')[0], firstB = b.split(' ')[0];
+  return ta.some(w => tb.includes(w) && !(w === firstA && w === firstB));
+}
 async function espnScoreboardScorers(env, leagueId, ds) {
   const slug = ESPN_SLUG_BY_LEAGUE[leagueId];
-  if (!slug) return new Map();
-  const pairs = await cached(env, 'espn:scorers:' + leagueId + ':' + ds, 3600, async () => {
+  if (!slug) return [];
+  const rows = await cached(env, 'espn:scorers:v2:' + leagueId + ':' + ds, 3600, async () => {
     const j = await espnGet(slug + '/scoreboard', { dates: ds.replace(/-/g, '') });
     const out = [];
     (j.events || []).forEach(ev => {
@@ -487,11 +503,11 @@ async function espnScoreboardScorers(env, leagueId, ds) {
       }).filter(Boolean);
       if (!scorers.length) return;
       const hn = ((pick('home').team) || {}).displayName, an = ((pick('away').team) || {}).displayName;
-      if (hn && an) out.push([pairKey(hn, an), scorers]);
+      if (hn && an) out.push([hn, an, scorers]);
     });
     return out;
   }).catch(() => []);
-  return new Map(pairs);
+  return rows;
 }
 async function afGoalScorers(env, fixtureId, homeId, awayId) {
   return cached(env, 'af:scorers:' + fixtureId, 3600, async () => {
@@ -531,9 +547,9 @@ async function getRange(env, from, to) {
   for (const f of needFd.slice(0, 12)) {
     const key = f.league.id + ':' + utcDate(f.ts);
     if (!byLeagueDate.has(key)) byLeagueDate.set(key, espnScoreboardScorers(env, f.league.id, utcDate(f.ts)));
-    const map = await byLeagueDate.get(key);
-    const rows = map.get(pairKey(f.home.name, f.away.name));
-    if (rows && rows.length) f.scorers = rows;
+    const rows = await byLeagueDate.get(key);
+    const hit = rows.find(([hn, an]) => teamMatch(f.home.name, hn) && teamMatch(f.away.name, an));
+    if (hit && hit[2] && hit[2].length) f.scorers = hit[2];
   }
   const partial = settled.some(r => r.status === 'rejected');
   return { fixtures: out, stale: ok.some(r => r.stale) || undefined, partial: partial || undefined };
