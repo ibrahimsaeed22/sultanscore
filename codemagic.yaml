@@ -13,6 +13,8 @@ workflows:
         script: |
           npx cap add android
           npx cap sync android
+      - name: Generate app icons and splash
+        script: npx @capacitor/assets generate --android
       - name: Build debug APK
         script: |
           cd android
