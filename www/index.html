@@ -66,6 +66,29 @@ nav.tabs .dot{position:absolute;top:9px;inset-inline-start:calc(50% + 8px);min-w
 @media (prefers-color-scheme:dark){.st.warn{background:#3a2f12;color:#fbbf24}}
 @keyframes pulse{50%{opacity:.65}}
 .dt{font-size:11.5px;color:var(--muted);margin-top:2px;direction:ltr}
+.scorers{margin-top:4px;display:flex;flex-direction:column;gap:1px;align-items:center}
+.scorers .sc{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:132px}
+.hero .scorers .sc{font-size:12.5px;max-width:220px}
+/* lineup pitch (FotMob-style) */
+.pitch{position:relative;width:100%;aspect-ratio:3/4.3;background:linear-gradient(180deg,#43a047,#2e7d32 50%,#43a047);border-radius:16px;overflow:hidden;direction:ltr;margin:8px 0 4px;box-shadow:var(--shadow)}
+.pitch::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(180deg,rgba(255,255,255,.06) 0 12.5%,transparent 12.5% 25%)}
+.pl-mid{position:absolute;left:0;right:0;top:50%;height:2px;background:rgba(255,255,255,.9);transform:translateY(-50%)}
+.pl-cir{position:absolute;left:50%;top:50%;width:24%;aspect-ratio:1;border:2px solid rgba(255,255,255,.9);border-radius:50%;transform:translate(-50%,-50%)}
+.pl-box{position:absolute;left:20%;right:20%;height:12%;border:2px solid rgba(255,255,255,.9)}
+.pl-box.top{top:0;border-top:0}
+.pl-box.bot{bottom:0;border-bottom:0}
+.pl-box6{position:absolute;left:34%;right:34%;height:5.5%;border:2px solid rgba(255,255,255,.9)}
+.pl-box6.top{top:0;border-top:0}
+.pl-box6.bot{bottom:0;border-bottom:0}
+.pl-lab{position:absolute;z-index:2;font-size:10px;font-weight:700;color:#fff;background:rgba(0,0,0,.35);padding:2px 7px;border-radius:999px}
+.pl-lab.top{top:6px;left:8px}
+.pl-lab.bot{bottom:6px;left:8px}
+.pdot{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;width:56px;z-index:1}
+.pdot .pn{width:27px;height:27px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:11.5px;font-weight:800;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.pdot.hm .pn{background:#005a9c}
+.pdot.aw .pn{background:#c0392b}
+.pdot .nm{font-size:10px;font-weight:600;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.8);max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center}
+.pdot .rt{position:absolute;top:-7px;right:2px;background:#fff;color:#111;border-radius:999px;font-size:9px;font-weight:800;padding:1px 5px;box-shadow:0 1px 3px rgba(0,0,0,.35)}
 .state{text-align:center;color:var(--muted);padding:40px 12px}
 .state .big{font-size:40px}
 .err{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;border-radius:12px;padding:10px 12px;font-size:13px;margin:4px 0 10px;display:flex;justify-content:space-between;gap:10px;align-items:center}
@@ -203,12 +226,12 @@ const I18N = {
     h: 'س', m: 'د', stats: 'الإحصائيات', events: 'الأحداث', noStats: 'الإحصائيات هتظهر بعد بداية المباراة',
     noEvents: 'مفيش أحداث لسه', next: 'القادمة', last: 'آخر النتائج', back: 'رجوع', updated: 'آخر تحديث {t}',
     setupT: 'محتاج ربط التطبيق بالسيرفر', setupB: 'افتح الملف {f} وحط عنوان السيرفر بتاعك في API_BASE، وبعدين ابني التطبيق تاني. الخطوات في ملف README.',
-    langBtn: 'English', venue: 'الملعب', round: 'الجولة', goal: 'هدف', own: 'هدف عكسي', pen: 'ركلة جزاء', missPen: 'ضربة جزاء ضائعة',
-    yellow: 'إنذار', red: 'طرد', sub: 'تبديل', var: 'مراجعة الفيديو', assist: 'تمريرة', in: 'دخل', vs: 'ضد',
+    langBtn: 'English', venue: 'الملعب', round: 'الجولة', goal: 'هدف', own: 'هدف عكسي', penGoal: 'ضربة جزاء', missPen: 'ضربة جزاء ضائعة',
+    yellow: 'إنذار', red: 'طرد', sub: 'تبديل', var: 'مراجعة الفيديو', assist: 'تمريرة حاسمة', in: 'دخل', vs: 'ضد',
     standings: 'الترتيب', scorers: 'الهدافين', lineups: 'التشكيلات', formation: 'التشكيلة', coach: 'المدرب',
     startingXI: 'التشكيلة الأساسية', subs: 'البدلاء', noStandings: 'جدول الترتيب مش متاح للدوري ده', noScorers: 'الهدافين مش متاحين للدوري ده',
     noLineups: 'التشكيلات هتظهر قبل المباراة', goals: 'أهداف', assists: 'تمريرات حاسمة', playedShort: 'لعب', pointsShort: 'نقاط', tapLeague: 'اضغط على اسم الدوري لعرض الترتيب والهدافين',
-    h2h: 'المواجهات', form: 'المستوى', formShort: 'الشكل', rating: 'التقييم', lastMeetings: 'آخر المواجهات', wins: 'فوز', draws: 'تعادل', losses: 'خسارة',
+    h2h: 'المواجهات', form: 'المستوى', formShort: 'المستوى', rating: 'التقييم', lastMeetings: 'آخر المواجهات', wins: 'فوز', draws: 'تعادل', losses: 'خسارة',
     noH2h: 'المواجهات المباشرة مش متاحة للمباراة دي', homeWins: 'فوز صاحب الأرض', awayWins: 'فوز الضيف',
     updateT: 'في تحديث جديد!', updateB: 'نزلت نسخة جديدة من SultanScore', updateBtn: 'حمّل التحديث', updateLater: 'بعدين'
   },
@@ -224,7 +247,7 @@ const I18N = {
     h: 'h', m: 'm', stats: 'Statistics', events: 'Events', noStats: 'Statistics appear once the match starts',
     noEvents: 'No events yet', next: 'Upcoming', last: 'Recent results', back: 'Back', updated: 'Updated {t}',
     setupT: 'Connect the app to your server', setupB: 'Open {f} and put your server address in API_BASE, then rebuild the app. Steps are in the README.',
-    langBtn: 'العربية', venue: 'Venue', round: 'Round', goal: 'Goal', own: 'Own goal', pen: 'Penalty', missPen: 'Missed penalty',
+    langBtn: 'العربية', venue: 'Venue', round: 'Round', goal: 'Goal', own: 'Own goal', penGoal: 'Penalty', missPen: 'Missed penalty',
     yellow: 'Yellow card', red: 'Red card', sub: 'Substitution', var: 'VAR', assist: 'Assist', in: 'In', vs: 'vs',
     standings: 'Standings', scorers: 'Top scorers', lineups: 'Lineups', formation: 'Formation', coach: 'Coach',
     startingXI: 'Starting XI', subs: 'Substitutes', noStandings: 'Standings are not available for this league', noScorers: 'Top scorers are not available for this league',
@@ -248,6 +271,15 @@ const store = {
 let lang = (navigator.language || '').toLowerCase().startsWith('ar') ? 'ar' : 'en';
 { const s = store.get('mc-lang', null); if (s === 'ar' || s === 'en') lang = s; }
 const t = (k, v) => { let s = (I18N[lang] && I18N[lang][k]) || I18N.en[k] || k; if (v) for (const x in v) s = s.split('{' + x + '}').join(v[x]); return s; };
+// Arabic plurals: 1 مباراة واحدة، 2 مباراتان، 3-10 مباريات، 11+ مباراة.
+function countText(n) {
+  if (lang !== 'ar') return t('count', { n });
+  if (n === 0) return 'مفيش مباريات';
+  if (n === 1) return 'مباراة واحدة';
+  if (n === 2) return 'مباراتان';
+  if (n <= 10) return n + ' مباريات';
+  return n + ' مباراة';
+}
 const loc = () => lang === 'ar' ? 'ar-EG-u-nu-latn' : 'en-GB';
 
 /* ---------- helpers ---------- */
@@ -311,9 +343,9 @@ function logo(team, cls) {
 function teamBox(team) { const b = el('div', 'team'); b.appendChild(logo(team)); b.appendChild(el('div', 'nm', team.name)); return b; }
 function untilText(ts) {
   const mins = Math.max(0, Math.round((ts * 1000 - Date.now()) / 60000));
-  if (mins < 60) return mins + t('m');
+  if (mins < 60) return mins + ' ' + t('m');
   const h = Math.floor(mins / 60); if (h >= 24) return '';
-  return h + t('h') + (mins % 60 ? ' ' + (mins % 60) + t('m') : '');
+  return h + ' ' + t('h') + (mins % 60 ? ' ' + (mins % 60) + ' ' + t('m') : '');
 }
 function statusBadge(f) {
   if (f.state === 'live') {
@@ -338,6 +370,20 @@ function midBox(f, big) {
   const s = statusBadge(f);
   if (s) mid.appendChild(el('span', s.cls, s.text));
   if (hasScore && f.state === 'finished') mid.appendChild(el('div', 'dt', fmtTime(f.ts)));
+  // Goalscorers under the score, FotMob-style (list: first 3 + more, match page: all).
+  if (hasScore && f.scorers && f.scorers.length) {
+    const rows = [...f.scorers].sort((a, b) => (a.min || 0) - (b.min || 0));
+    const show = big ? rows : rows.slice(0, 3);
+    const box = el('div', 'scorers');
+    show.forEach(g => {
+      const line = el('div', 'sc');
+      line.appendChild(el('span', 'ball', '⚽ '));
+      line.appendChild(el('span', null, (g.min != null ? g.min + "' " : '') + g.player + (g.og ? ' ' + (lang === 'ar' ? '(عكسي)' : '(OG)') : '')));
+      box.appendChild(line);
+    });
+    if (!big && rows.length > 3) box.appendChild(el('div', 'sc', '+' + (rows.length - 3)));
+    mid.appendChild(box);
+  }
   return mid;
 }
 function matchCard(f) {
@@ -436,7 +482,7 @@ function viewMatches(root) {
 
   const list = S.m.fixtures.filter(f => (S.league === 'all' || f.league.id === S.league) && (!S.mine || favHas(f)));
   const bar = el('div', 'bar');
-  bar.appendChild(el('span', null, t('count', { n: list.length })));
+  bar.appendChild(el('span', null, countText(list.length)));
   if (S.m.at) bar.appendChild(el('span', null, t('updated', { t: fmtTime(S.m.at / 1000) })));
   root.appendChild(bar);
   if (!list.length) { root.appendChild(stateBox('🗓️', S.mine ? t('emptyMine') : t('empty'))); return; }
@@ -568,6 +614,54 @@ function ratingBadge(rating) {
   if (rating == null || isNaN(+rating)) return null;
   return el('span', 'rating' + (+rating >= 7 ? ' good' : ''), (+rating).toFixed(1));
 }
+/* ---------- lineup pitch (FotMob-style) ---------- */
+// Split a formation like "4-3-3" into its lines, or null when unusable.
+function formationRows(formation) {
+  const nums = String(formation || '').split('-').map(Number);
+  if (nums.length < 2 || nums.length > 5 || nums.some(n => !(n > 0 && n <= 6))) return null;
+  if (nums.reduce((a, b) => a + b, 0) !== 10) return null;
+  return nums;
+}
+// Group the XI into rows from the goalkeeper (back) to the forwards.
+function pitchSlots(xi, formation) {
+  const rank = pl => ({ G: 0, D: 1, M: 2, F: 3 }[String(pl.pos || '').trim().toUpperCase()[0]] ?? 2);
+  const byRank = [[], [], [], []];
+  [...(xi || [])].forEach(pl => byRank[Math.min(3, rank(pl))].push(pl));
+  const rows = formationRows(formation);
+  const sizes = rows ? [1, ...rows] : [byRank[0].length, byRank[1].length, byRank[2].length, byRank[3].length].filter(n => n > 0);
+  const pool = [...byRank[0], ...byRank[1], ...byRank[2], ...byRank[3]];
+  const out = [];
+  let k = 0;
+  sizes.forEach(n => {
+    const row = [];
+    for (let i = 0; i < n && k < pool.length; i++) row.push(pool[k++]);
+    if (row.length) out.push(row);
+  });
+  while (k < pool.length) out[out.length - 1].push(pool[k++]);
+  return out;
+}
+function lastName(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : '—';
+}
+// Place one team's XI on the pitch: away on top, home at the bottom.
+function pitchTeam(pitch, side, isHome) {
+  const rows = pitchSlots(side.xi || [], side.formation);
+  const n = rows.length || 1;
+  rows.forEach((row, ri) => {
+    row.forEach((pl, i) => {
+      const y = isHome ? 0.99 - ((ri + 0.5) / n) * 0.48 : 0.01 + ((ri + 0.5) / n) * 0.48;
+      const x = 0.08 + 0.84 * ((i + 0.5) / row.length);
+      const dot = el('div', 'pdot ' + (isHome ? 'hm' : 'aw'));
+      dot.style.left = (x * 100).toFixed(1) + '%';
+      dot.style.top = (y * 100).toFixed(1) + '%';
+      dot.appendChild(el('b', 'pn', pl.number != null ? String(pl.number) : ''));
+      dot.appendChild(el('span', 'nm', lastName(pl.player)));
+      if (pl.rating != null) dot.appendChild(el('span', 'rt', String(pl.rating)));
+      pitch.appendChild(dot);
+    });
+  });
+}
 async function loadH2H(p) {
   if (p.h2hLoading || p.h2h) return;
   p.h2hLoading = true;
@@ -608,7 +702,7 @@ function drawMatch(p) {
   $('ottl').textContent = leagueName(f.league);
   body.textContent = '';
   const hero = el('div', 'hero');
-  hero.appendChild(teamBox(f.home)); hero.appendChild(midBox(f)); hero.appendChild(teamBox(f.away));
+  hero.appendChild(teamBox(f.home)); hero.appendChild(midBox(f, true)); hero.appendChild(teamBox(f.away));
   hero.querySelectorAll('.team').forEach((x, i) => { x.style.cursor = 'pointer'; x.addEventListener('click', () => openPage({ type: 'team', id: (i ? f.away : f.home).id, team: i ? f.away : f.home })); });
   body.appendChild(hero);
   const meta = el('div', 'meta');
@@ -662,30 +756,33 @@ function drawMatch(p) {
         head.appendChild(el('b', null, team.name));
         head.appendChild(el('span', null, (side.formation ? t('formation') + ': ' + side.formation : '') + (side.coach ? ' · ' + t('coach') + ': ' + side.coach : '')));
         body.appendChild(head);
-        body.appendChild(el('h3', 'sec', t('startingXI')));
-        const xi = el('div', 'xi');
-        (side.xi || []).forEach(pl => {
+      });
+      // One pitch for both teams: away on top, home at the bottom.
+      if ((lu.home && (lu.home.xi || []).length) || (lu.away && (lu.away.xi || []).length)) {
+        const pitch = el('div', 'pitch');
+        pitch.appendChild(el('div', 'pl-mid'));
+        pitch.appendChild(el('div', 'pl-cir'));
+        pitch.appendChild(el('div', 'pl-box top'));
+        pitch.appendChild(el('div', 'pl-box bot'));
+        pitch.appendChild(el('div', 'pl-box6 top'));
+        pitch.appendChild(el('div', 'pl-box6 bot'));
+        if (lu.away && (lu.away.xi || []).length) { pitch.appendChild(el('span', 'pl-lab top', f.away.name)); pitchTeam(pitch, lu.away, false); }
+        if (lu.home && (lu.home.xi || []).length) { pitch.appendChild(el('span', 'pl-lab bot', f.home.name)); pitchTeam(pitch, lu.home, true); }
+        body.appendChild(pitch);
+      }
+      [[f.home, lu.home], [f.away, lu.away]].forEach(([team, side]) => {
+        if (!side || !side.subs || !side.subs.length) return;
+        body.appendChild(el('h3', 'sec', team.name + ' · ' + t('subs')));
+        const sb = el('div', 'xi');
+        side.subs.forEach(pl => {
           const r = el('div', 'ev');
           r.appendChild(el('div', 'num', pl.number != null ? String(pl.number) : '–'));
           r.appendChild(el('div', 'pos', pl.pos || ''));
           r.appendChild(el('div', 'who', pl.player || '—'));
           const rb = ratingBadge(pl.rating); if (rb) r.appendChild(rb);
-          xi.appendChild(r);
+          sb.appendChild(r);
         });
-        body.appendChild(xi);
-        if (side.subs && side.subs.length) {
-          body.appendChild(el('h3', 'sec', t('subs')));
-          const sb = el('div', 'xi');
-          side.subs.forEach(pl => {
-            const r = el('div', 'ev');
-            r.appendChild(el('div', 'num', pl.number != null ? String(pl.number) : '–'));
-            r.appendChild(el('div', 'pos', pl.pos || ''));
-            r.appendChild(el('div', 'who', pl.player || '—'));
-            const rb = ratingBadge(pl.rating); if (rb) r.appendChild(rb);
-            sb.appendChild(r);
-          });
-          body.appendChild(sb);
-        }
+        body.appendChild(sb);
       });
     }
     body.scrollTop = keep;
@@ -726,7 +823,7 @@ function drawMatch(p) {
       row.appendChild(el('div', 'm', e.min + (e.extra ? '+' + e.extra : '') + "'"));
       let icon = '•', label = e.detail;
       const dt = (e.detail || '').toLowerCase(), ty = (e.type || '').toLowerCase();
-      if (ty === 'goal') { icon = dt.includes('miss') ? '❌' : '⚽'; label = dt.includes('own') ? t('own') : dt.includes('miss') ? t('missPen') : dt.includes('pen') ? t('pen') : t('goal'); }
+      if (ty === 'goal') { icon = dt.includes('miss') ? '❌' : '⚽'; label = dt.includes('own') ? t('own') : dt.includes('miss') ? t('missPen') : dt.includes('pen') ? t('penGoal') : t('goal'); }
       else if (ty === 'card') { icon = dt.includes('red') || dt.includes('second') ? '🟥' : '🟨'; label = dt.includes('red') ? t('red') : t('yellow'); }
       else if (ty === 'subst') { icon = '🔄'; label = t('sub'); }
       else if (ty === 'var') { icon = '📺'; label = t('var'); }

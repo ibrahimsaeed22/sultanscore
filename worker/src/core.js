@@ -241,6 +241,13 @@ function afFixture(f) {
     home: side(f.teams.home), away: side(f.teams.away), hg: f.goals.home, ag: f.goals.away
   };
 }
+/* ---------- goalscorers under the score (FotMob-style) ---------- */
+// One scored goal: {min, player, team:'home'|'away', og}. Shown under the
+// score in the match card and in the match page hero.
+function goalRow(min, player, team, og) {
+  if (!player || (team !== 'home' && team !== 'away')) return null;
+  return { min: min == null || isNaN(+min) ? null : +min, player: String(player), team, og: !!og };
+}
 /* ---------- normalising: football-data.org ---------- */
 function fdState(s) {
   if (s === 'IN_PLAY' || s === 'PAUSED') return 'live';
@@ -257,12 +264,19 @@ function fdFixture(m, allowUnknown) {
   const side = t => ({ id: 'fd-' + t.id, name: t.shortName || t.name || '?', logo: t.crest || '' });
   const ft = (m.score && m.score.fullTime) || {};
   const short = m.status === 'PAUSED' ? 'HT' : st === 'finished' && m.score && m.score.duration === 'PENALTY_SHOOTOUT' ? 'PEN' : st === 'live' ? 'LIVE' : st === 'finished' ? 'FT' : 'NS';
+  // football-data.org returns the scorers on the match itself (no extra call).
+  const scorers = (m.goals || []).map(g => {
+    const tid = g.team && g.team.id != null ? String(g.team.id) : null;
+    const team = tid == null ? null : tid === String((m.homeTeam || {}).id) ? 'home' : tid === String((m.awayTeam || {}).id) ? 'away' : null;
+    return goalRow(g.minute, g.scorer && g.scorer.name, team, (g.type || '') === 'OWN_GOAL');
+  }).filter(Boolean);
   return {
     id: 'fd-' + m.id, ts: Math.floor(Date.parse(m.utcDate) / 1000), state: st, short,
     elapsed: st === 'live' && typeof m.minute === 'number' ? m.minute : null, venue: m.venue || '',
     league: { id: lid, name: c.name || '', logo: c.emblem || '', country: (m.area && m.area.name) || '', round: m.matchday ? 'Matchday ' + m.matchday : '' },
     home: side(m.homeTeam || {}), away: side(m.awayTeam || {}),
-    hg: ft.home === undefined ? null : ft.home, ag: ft.away === undefined ? null : ft.away
+    hg: ft.home === undefined ? null : ft.home, ag: ft.away === undefined ? null : ft.away,
+    scorers
   };
 }
 /* ---------- normalising: ESPN (no key) ---------- */
@@ -279,6 +293,18 @@ function espnFixture(ev, leagueId, leagueName) {
   const score = c => { const n = parseInt(c.score, 10); return isNaN(n) ? null : n; };
   const clock = (ev.status && (ev.status.displayClock || ev.status.type.detail)) || '';
   const min = /(\d+)'/.exec(clock);
+  // ESPN scoreboard details carry the scoring plays (best effort — the shape varies).
+  const scorers = (comp.details || []).filter(dt => {
+    const tx = (dt.type && dt.type.text) || '';
+    return /goal/i.test(tx) && !/miss/i.test(tx);
+  }).map(dt => {
+    const ck = (dt.clock && dt.clock.displayValue) || (dt.type && dt.type.detail) || '';
+    const mm = /(\d+)'/.exec(ck || '');
+    const ath = (dt.athletesInvolved && dt.athletesInvolved[0]) || {};
+    const tid = dt.team && dt.team.id != null ? String(dt.team.id) : null;
+    const team = tid == null ? null : tid === String(((pick('home').team) || {}).id) ? 'home' : tid === String(((pick('away').team) || {}).id) ? 'away' : null;
+    return goalRow(mm ? +mm[1] : null, ath.displayName || ath.shortName, team, /own/i.test((dt.type && dt.type.text) || ''));
+  }).filter(Boolean);
   return {
     id: 'espn-' + ev.id, ts: Math.floor(Date.parse(ev.date) / 1000), state,
     short: state === 'live' ? (min ? min[1] : 'LIVE') : state === 'finished' ? 'FT' : 'NS',
@@ -286,7 +312,8 @@ function espnFixture(ev, leagueId, leagueName) {
     venue: (comp.venue && comp.venue.fullName) || '',
     league: { id: leagueId, name: leagueName || (ev.league && ev.league.name) || '', logo: '', country: '', round: (comp.notes && comp.notes[0] && comp.notes[0].headline) || '' },
     home: side(pick('home')), away: side(pick('away')),
-    hg: score(pick('home')), ag: score(pick('away'))
+    hg: score(pick('home')), ag: score(pick('away')),
+    scorers
   };
 }
 async function espnDayFixtures(env, leagueId, ds) {
@@ -428,6 +455,20 @@ async function dayFromWithFallback(env, p, src, ds) {
   if (primaryErr) throw primaryErr;
   return primary;
 }
+/* ---------- API-Football goalscorers for one finished fixture ---------- */
+// One cached /fixtures/events call per fixture (1h — a finished match's
+// scorers never change), so enriching a day costs ~1 AF call per finished
+// match, and the daily budget guard still caps everything at 85/day.
+async function afGoalScorers(env, fixtureId, homeId, awayId) {
+  return cached(env, 'af:scorers:' + fixtureId, 3600, async () => {
+    const j = await afGet(env, 'fixtures/events', { fixture: fixtureId });
+    return (j.response || []).filter(e => (e.type || '') === 'Goal' && (e.detail || '') !== 'Missed Penalty').map(e => goalRow(
+      e.time && e.time.elapsed, e.player && e.player.name,
+      String(e.team && e.team.id) === String(homeId) ? 'home' : 'away',
+      (e.detail || '') === 'Own Goal'
+    )).filter(Boolean);
+  }).catch(() => []);
+}
 async function getRange(env, from, to) {
   if (!(from > 0 && to > from)) throw new HttpError(400, 'bad range');
   if (to - from > 3 * 86400) throw new HttpError(400, 'range too large');
@@ -441,6 +482,13 @@ async function getRange(env, from, to) {
   const seen = new Set(), out = [];
   ok.forEach(r => r.fixtures.forEach(f => { if (f.ts >= from && f.ts < to && !seen.has(f.id)) { seen.add(f.id); out.push(f); } }));
   out.sort(sortFx);
+  // Goalscorers for finished API-Football fixtures (the only source for
+  // Egypt and the cups): at most 8 cached events calls per response.
+  const needSc = out.filter(f => f.state === 'finished' && String(f.id || '').startsWith('af-') && !(f.scorers && f.scorers.length));
+  await Promise.all(needSc.slice(0, 8).map(async f => {
+    const rows = await afGoalScorers(env, String(f.id).slice(3), String(f.home.id).replace('af-', ''), String(f.away.id).replace('af-', ''));
+    if (rows.length) f.scorers = rows;
+  }));
   const partial = settled.some(r => r.status === 'rejected');
   return { fixtures: out, stale: ok.some(r => r.stale) || undefined, partial: partial || undefined };
 }
