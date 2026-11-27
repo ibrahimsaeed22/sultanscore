@@ -9,11 +9,14 @@
 //      statistics, lineups, player ratings, H2H. Free tier: 100 req/day,
 //      so it is spent sparingly — see the 85/day budget guard below.
 //   3. ESPN (no key)    -> fixtures/live/standings/scorers when both keyed sources fail
-//   4. SportScore (no key, ~10,000 req/day/IP) -> fixtures/live only, last
-//      resort. Its widget API has no date/league filter, so it returns
-//      live + recent matches which we filter by date here. Free tier
-//      requires a visible "Powered by SportScore" attribution wherever
-//      its data is rendered (see README).
+//   4. FotMob (no key)   -> fixtures/live + match details (stats, events,
+//      lineups, ratings) when ESPN also has nothing; real league ids via
+//      the verified primaryId map. Unofficial, no SLA — fallback only.
+//      Also the standings + top-scorers fallback for AF-only leagues
+//      (Egypt etc.) via /api/data/leagues — see fmStandings/fmScorers.
+//      (SportScore was source 5 until 2026-11-26, then removed: its
+//      widget API has no date/league filter, so it injected ~50 fixtures
+//      from untracked leagues under placeholder league 999001.)
 // If one key is missing the other source covers what it can. With no keys at all it serves demo data.
 //
 // Answers are cached (Cloudflare KV when bound, memory otherwise) so users share the same upstream requests.
@@ -23,7 +26,6 @@ import { mockUpstream } from './mock.js';
 
 const AF_URL = 'https://v3.football.api-sports.io';
 const FD_URL = 'https://api.football-data.org/v4';
-const SS_URL = 'https://sportscore.com';
 // API-Football free tier is 100 requests/day. The guard below stops
 // spending it on fixtures/live once 85 are used in a UTC day, keeping a
 // 15-request reserve; detail calls (stats/lineups) then fall back to the
@@ -40,9 +42,9 @@ const AF_DAILY_BUDGET = 85;
 // the version number here AND in package.json AND in www/index.html
 // (APP_VERSION) at the same time, or the banner will never show / never go away.
 const LATEST_VERSION = {
-  version: '1.1.1',
+  version: '1.1.2',
   downloadUrl: 'https://github.com/ibrahimsaeed22/sultanscore/releases',
-  notes: { ar: 'اللوجو الجديد، الهدافين تحت النتيجة، التشكيلة على الملعب، تظبيط العربي', en: 'New logo, scorers under the score, lineup on the pitch, Arabic fixes' }
+  notes: { ar: 'تنضيف الكود، سرعة واستقرار أكتر', en: 'Code cleanup, faster and more stable' }
 };
 
 // League ids follow API-Football numbering (the app uses them for names/order).
@@ -63,15 +65,24 @@ Object.entries(FD_CODE_TO_LEAGUE).forEach(([code, id]) => { FD_LEAGUE_TO_CODE[id
 const ESPN_SLUG_BY_LEAGUE = { 39: 'eng.1', 140: 'esp.1', 135: 'ita.1', 78: 'ger.1', 61: 'fra.1', 94: 'por.1', 88: 'ned.1', 203: 'tur.1', 233: 'egy.1', 2: 'uefa.champions', 3: 'uefa.europa', 848: 'uefa.europa.conf' };
 // Football season year: a season starting in July belongs to that calendar year.
 const currentSeason = () => { const n = new Date(); return n.getMonth() >= 6 ? n.getFullYear() : n.getFullYear() - 1; };
-// 8s upstream timeout (Cloudflare Workers have a short CPU / wall-clock budget).
-const UPSTREAM_TIMEOUT_MS = 8000;
+// 3s upstream timeout (was 8s — approved 2026-11-25: a slow source must fail
+// fast so the fallback / stale cache answers instead of blocking the app).
+// Cloudflare Workers have a short CPU / wall-clock budget; 3s per source
+// still leaves room for the fallback chain inside one request.
+// NOTE on cold starts: right after a deploy the first /fixtures call can
+// return 0 fixtures (cold isolates + 3s timeouts on every upstream), the
+// retry works. Mitigation is operational: call GET /warm right after a
+// deploy and verify /fixtures before calling it done — never rely on the
+// first cold request alone.
+const UPSTREAM_TIMEOUT_MS = 3000;
 // Last-known per-source availability. Values only (no keys, no secrets, no
 // upstream error text) — surfaced by /health so a client can see what is up.
 const sourceStatus = {
   apiFootball: { configured: false, available: null },
   footballData: { configured: false, available: null },
   espn: { configured: true, available: null },
-  sportscore: { configured: true, available: null }
+  fotmob: { configured: true, available: null },
+  sofascore: { configured: true, available: null }
 };
 function markSource(name, ok) { if (sourceStatus[name]) sourceStatus[name].available = !!ok; }
 
@@ -87,7 +98,12 @@ class HttpError extends Error { constructor(status, message) { super(message); t
 const economy = env => env.ECONOMY !== '0';           // economy mode is ON unless ECONOMY="0"
 function ttl(env, name) {
   const eco = economy(env);
-  return ({ today: eco ? 600 : 45, live: eco ? 180 : 20, detailLive: eco ? 120 : 30, team: eco ? 900 : 300 })[name];
+  // 'today' is 1800s (was 600s): the cron warms every 30 min, so a 10-min
+  // TTL meant the day cache was expired — and every answer flagged
+  // stale:true with the in-app "last saved data" banner — most of the
+  // time. 30 min matches the warm cadence; SWR still refreshes in the
+  // background the moment it expires, so data never sits older than that.
+  return ({ today: eco ? 1800 : 45, live: eco ? 180 : 20, detailLive: eco ? 120 : 30, team: eco ? 900 : 300 })[name];
 }
 function plan(env) {
   const mock = env.MOCK === '1' || (!env.API_KEY && !env.FD_KEY);
@@ -98,6 +114,10 @@ function plan(env) {
   return { mock: false, af, fd, allowed };
 }
 const planKey = p => [...p.fd].join('.') + '|' + [...p.af].join('.') + (p.mock ? 'm' : '');
+// Shared fixture helpers (defined up here: every normaliser below uses them).
+const sortFx = (a, b) => a.ts - b.ts || a.league.id - b.league.id;
+const utcDate = sec => new Date(sec * 1000).toISOString().slice(0, 10);
+const addUtcDay = (ds, n) => new Date(Date.parse(ds + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
 
 /* ---------- cache (KV when bound, memory otherwise) + de-duplication ---------- */
 const mem = new Map();
@@ -111,22 +131,49 @@ async function cacheWrite(env, key, entry) {
   if (mem.size > 800) mem.clear();
   mem.set(key, entry);
 }
+// Background refresh runner, set per-request from ctx.waitUntil (see
+// handle()). Without it, a background refresh still runs best-effort as a
+// floating promise — the isolate may be frozen after the response, so the
+// refresh is not guaranteed, but serving stale never depends on it.
+let bgRunner = null;
+function runBackground(p) {
+  const q = p.catch(() => {});
+  if (bgRunner) { try { bgRunner(q); } catch (e) { /* best effort */ } }
+}
 // Fresh copy for `ttlSec` seconds; if the source fails we fall back to the last copy (kept 24h) and flag it stale.
+// Stale-while-revalidate (approved 2026-11-25): an expired copy is served
+// IMMEDIATELY with stale:true and refreshed in the background, so the app
+// never waits on a slow upstream when yesterday's data will do for a moment.
 async function cached(env, key, ttlSec, producer) {
   const entry = await cacheRead(env, key);
   if (entry && entry.exp > Date.now()) return entry.v;
-  if (pending.has(key)) return pending.get(key);
+  if (pending.has(key)) {
+    if (entry) return Object.assign({}, entry.v, { stale: true });
+    return pending.get(key);
+  }
   const p = (async () => {
     try {
       const v = await producer();
       await cacheWrite(env, key, { v, exp: Date.now() + ttlSec * 1000 });
       return v;
     } catch (e) {
-      if (entry) return Object.assign({}, entry.v, { stale: true });
+      if (entry) {
+        // Failed refresh with a stale copy in hand: back off 60s before
+        // trying again (2026-11-26 — while API-Football 429s, every
+        // request was re-spending AF budget on a refresh that fails, and
+        // every answer stayed flagged stale). The copy is at most ~60s
+        // older for it, and the next request after the backoff retries.
+        try { await cacheWrite(env, key, { v: entry.v, exp: Date.now() + 60000 }); } catch (e2) { /* ignore */ }
+        return Object.assign({}, entry.v, { stale: true });
+      }
       throw e;
     } finally { pending.delete(key); }
   })();
   pending.set(key, p);
+  if (entry) {
+    runBackground(p);
+    return Object.assign({}, entry.v, { stale: true });
+  }
   return p;
 }
 
@@ -163,7 +210,7 @@ async function afGet(env, path, params) {
   if (env.MOCK === '1' || (!env.API_KEY && !env.FD_KEY)) return mockUpstream(path, params);
   // Budget guard: once 85 API-Football calls are spent today, stop spending
   // on any new upstream call. Callers already handle this: fixtures/live
-  // fall through to ESPN / SportScore / stale cache, standings/scorers try
+  // fall through to ESPN / FotMob / stale cache, standings/scorers try
   // the next source, and stats/lineups/events return the cached copy (or
   // an empty list) via their .catch() handlers.
   if ((await afBudgetRead(env)) >= AF_DAILY_BUDGET) { markSource('apiFootball', false); throw new HttpError(503, 'af daily budget exhausted'); }
@@ -202,25 +249,350 @@ async function espnGet(path, params) {
   markSource('espn', true);
   return res.json();
 }
-// SportScore (no key, ~10,000 req/day/IP). Free tier requires a visible
-// "Powered by SportScore" attribution wherever its data is rendered.
-// Used ONLY as a last resort for fixtures/live, after FD, API-Football
-// and ESPN. Its widget API (GET /api/widget/matches/?sport=football&
-// limit=1..50) has no date/league filter — it returns live + recent
-// matches — so we filter by date here. Response shape is NOT fully
-// documented (docs show {matches:[...]} in JS and {data:[...]} with
-// home_team/score/away_team in the Python client), so ssFixture parses
-// defensively and returns null for anything it cannot understand; a
-// shape change must never break the keyed providers.
-async function sportscoreGet(path, params) {
+/* ---------- SofaScore / FotMob probe (unofficial, no key, no SLA) ----------
+   Both are undocumented internal APIs: they can 403 / change shape at any
+   time and their terms forbid automated use. FotMob passed the probe FROM
+   THE WORKER (Cloudflare egress IP) on 2026-11-25 ~10:37 UTC (ok:true,
+   200, 50 leagues / 131 matches) and is now wired as a fallback — see
+   the FotMob section below. SofaScore 403s from the Worker, so it is
+   probe-only and never a live source.
+   GET /probe runs one lightweight call per source and returns only a
+   summary (status + counts + one sample name) — never a full data dump. */
+const FM_URL = 'https://www.fotmob.com/api/data';
+const SOFA_URL = 'https://api.sofascore.com/api/v1';
+const UA = { 'user-agent': 'Mozilla/5.0 (compatible; SultanScore/1.1.2)', accept: 'application/json' };
+async function probeFotmob(env) {
+  const ds = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  try {
+    const res = await fetchTimeout(FM_URL + '/matches?date=' + ds, { headers: UA });
+    if (!res.ok) { markSource('fotmob', false); return { source: 'fotmob', ok: false, status: res.status }; }
+    const j = await res.json();
+    const leagues = Array.isArray(j.leagues) ? j.leagues : [];
+    const matches = leagues.reduce((n, l) => n + ((l.matches || []).length), 0);
+    markSource('fotmob', true);
+    return { source: 'fotmob', ok: true, status: 200, leagues: leagues.length, matches, sample: leagues[0] ? leagues[0].name : null };
+  } catch (e) { markSource('fotmob', false); return { source: 'fotmob', ok: false, status: null, error: e instanceof HttpError ? e.message : 'fetch failed' }; }
+}
+async function probeSofascore(env) {
+  const ds = new Date().toISOString().slice(0, 10);
+  try {
+    const res = await fetchTimeout(SOFA_URL + '/sport/football/scheduled-events/' + ds, { headers: UA });
+    if (!res.ok) { markSource('sofascore', false); return { source: 'sofascore', ok: false, status: res.status }; }
+    const j = await res.json();
+    const events = Array.isArray(j.events) ? j.events : [];
+    markSource('sofascore', true);
+    return { source: 'sofascore', ok: true, status: 200, events: events.length, sample: events[0] && events[0].tournament ? events[0].tournament.name : null };
+  } catch (e) { markSource('sofascore', false); return { source: 'sofascore', ok: false, status: null, error: e instanceof HttpError ? e.message : 'fetch failed' }; }
+}
+
+/* ---------- FotMob fallback (unofficial, no key, no SLA) ----------
+   Wired 2026-11-25 as a fixtures/live fallback AFTER ESPN, and as a
+   match-detail source for fm- fixtures. It is NEVER the only source: the
+   keyed providers + ESPN are always tried first, and FotMob only fills
+   in when they return nothing for that league/day.
+   League ids are FotMob primaryIds, verified live 2026-11-21..27 from
+   /api/data/matches (never guessed):
+     ENG PL 47, ESP LaLiga 87, ITA Serie A 55, GER Bundesliga 54,
+     FRA Ligue 1 53, POR Liga Portugal 61, NED Eredivisie 57,
+     TUR Super Lig 71, BEL Pro League 40, SCO Premiership 64,
+     EGY Premier League 519 (ccode EGY — NOT the Ukrainian PL, 441),
+     UCL 42, UEL 73, UECL 10216.
+   Cups (45/48/143/137/81/66) and internationals (1/4/6/5) are NOT mapped
+   (no FotMob primaryId verified for them) — they keep the existing
+   fallbacks. Team logos use FotMob's CDN pattern
+   images.fotmob.com/image_resources/logo/teamlogo/<id>.png (verified 200).
+   Match details come from /api/data/matchDetails?matchId=<id> (the
+   /api/matchDetails path without /data 404s); details for matches older
+   than ~2 days may 404, so a failed detail fetch returns empty sections,
+   never an error, and the app still shows the fixture hero from its
+   preview. */
+const FM_LEAGUE_TO_AF = { 47: 39, 87: 140, 55: 135, 54: 78, 53: 61, 61: 94, 57: 88, 71: 203, 40: 144, 64: 179, 519: 233, 42: 2, 73: 3, 10216: 848 };
+const AF_TO_FM_LEAGUE = {};
+Object.entries(FM_LEAGUE_TO_AF).forEach(([fm, af]) => { AF_TO_FM_LEAGUE[af] = +fm; });
+const FM_TEAM_LOGO = id => 'https://images.fotmob.com/image_resources/logo/teamlogo/' + id + '.png';
+async function fmGet(path, params) {
   const qs = params ? '?' + new URLSearchParams(params).toString() : '';
   let res;
   try {
-    res = await fetchTimeout(SS_URL + '/api/widget/' + path + qs, { headers: { accept: 'application/json' } });
-  } catch (e) { markSource('sportscore', false); throw e; }
-  if (!res.ok) { markSource('sportscore', false); throw new HttpError(502, 'ss ' + res.status); }
-  markSource('sportscore', true);
+    res = await fetchTimeout(FM_URL + path + qs, { headers: UA });
+  } catch (e) { markSource('fotmob', false); throw e; }
+  if (!res.ok) { markSource('fotmob', false); throw new HttpError(502, 'fotmob ' + res.status); }
+  markSource('fotmob', true);
   return res.json();
+}
+function fmState(m) {
+  const st = m.status || {};
+  if (st.cancelled) return 'cancelled';
+  if (st.finished) return 'finished';
+  if (st.started) return 'live';
+  const lk = st.reason && st.reason.longKey;
+  if (lk === 'postponed' || lk === 'suspended') return 'postponed';
+  return 'upcoming';
+}
+function fmShort(m) {
+  const st = fmState(m);
+  const reason = (m.status && m.status.reason && m.status.reason.short) || '';
+  if (st === 'live') return reason || 'LIVE';
+  if (st === 'finished') return reason || 'FT';
+  if (st === 'postponed') return 'PST';
+  if (st === 'cancelled') return 'CANC';
+  return 'NS';
+}
+function fmElapsed(m) {
+  if (fmState(m) !== 'live') return null;
+  const reason = (m.status && m.status.reason && m.status.reason.short) || '';
+  const mm = /^(\d+)'/.exec(reason);
+  return mm ? +mm[1] : null;
+}
+function fmTeam(t) {
+  return { id: 'fm-' + t.id, name: t.name || t.shortName || '?', logo: t.id ? FM_TEAM_LOGO(t.id) : '' };
+}
+function fmFixture(m, afLeagueId, leagueName) {
+  const state = fmState(m);
+  const started = !!(m.status && (m.status.started || m.status.finished));
+  return {
+    id: 'fm-' + m.id, ts: Math.floor((m.timeTS || Date.parse((m.status && m.status.utcTime) || '')) / 1000),
+    state, short: fmShort(m), elapsed: fmElapsed(m), venue: '',
+    league: { id: afLeagueId, name: leagueName || '', logo: '', country: '', round: m.tournamentStage ? 'Matchday ' + m.tournamentStage : '' },
+    home: fmTeam(m.home || {}), away: fmTeam(m.away || {}),
+    hg: started ? (m.home && m.home.score != null ? m.home.score : null) : null,
+    ag: started ? (m.away && m.away.score != null ? m.away.score : null) : null
+  };
+}
+// One upstream call per date for ALL leagues (the endpoint returns every
+// league at once); per-league filtering happens locally, so warming and
+// fallback cost FotMob a single call per date, cached 5 minutes.
+async function fmDayRaw(env, ds) {
+  const ymd = ds.replace(/-/g, '');
+  return cached(env, 'fm:dayraw:' + ymd, 300, async () => {
+    const j = await fmGet('/matches', { date: ymd });
+    return { leagues: Array.isArray(j.leagues) ? j.leagues : [] };
+  });
+}
+async function fmDayFixtures(env, leagueId, ds) {
+  const fmId = AF_TO_FM_LEAGUE[leagueId];
+  if (!fmId) return { fixtures: [] };
+  const raw = await fmDayRaw(env, ds);
+  const seen = new Set(), out = [];
+  for (const lg of raw.leagues) {
+    if (lg.primaryId !== fmId) continue;
+    for (const m of (lg.matches || [])) {
+      if (seen.has(m.id)) continue;
+      seen.add(m.id);
+      const f = fmFixture(m, leagueId, lg.name);
+      if (utcDate(f.ts) === ds) out.push(f);
+    }
+  }
+  return { fixtures: out.sort(sortFx) };
+}
+async function fmLiveFixtures(env) {
+  const today = new Date().toISOString().slice(0, 10);
+  return cached(env, 'fm:live:' + today, ttl(env, 'live'), async () => {
+    const raw = await fmDayRaw(env, today);
+    const seen = new Set(), out = [];
+    for (const lg of raw.leagues) {
+      const afId = FM_LEAGUE_TO_AF[lg.primaryId];
+      if (!afId) continue;
+      for (const m of (lg.matches || [])) {
+        if (seen.has(m.id)) continue;
+        seen.add(m.id);
+        const f = fmFixture(m, afId, lg.name);
+        if (f.state === 'live') out.push(f);
+      }
+    }
+    return { fixtures: out.sort(sortFx) };
+  });
+}
+/* ---------- FotMob standings & top scorers (added 2026-11-26) ----------
+   Why: API-Football standings + topscorers fail for EVERY AF-only league
+   (verified 2026-11-26: Egypt 233, Belgium 144, Scotland 179, Turkey 203,
+   League Cup 48 — all "unavailable", while FD leagues work and AF
+   fixtures/events still work, so it is NOT the season and NOT Egypt-only).
+   FotMob GET /api/data/leagues?id=<primaryId> returns the current season's
+   full table (table[0].data.table.all: played/wins/draws/losses, scoresStr
+   "GF-GA", goalConDiff, pts, idx) plus stats.players "Top scorer" /
+   "Assists" with fetchAllUrl links to full lists on data.fotmob.com.
+   Verified live from a laptop IP for Egypt 519 (Pyramids 27pts/9, top
+   scorer Mahmoud Mamdouh 8), EPL 47 (identical table to football-data:
+   Arsenal 28pts/11) and Turkey 71 (Galatasaray 31). Only reached when
+   AF + FD both return nothing, so FD-covered leagues never change. */
+async function fmLeagueRaw(env, fmId) {
+  return cached(env, 'fm:league:' + fmId, 3600, async () => fmGet('/leagues', { id: fmId }));
+}
+function fmStandingRow(r) {
+  const m = /^(\d+)-(\d+)$/.exec(r.scoresStr || '');
+  return {
+    position: r.idx, team: { id: 'fm-' + r.id, name: r.name, logo: r.id ? FM_TEAM_LOGO(r.id) : '' },
+    played: r.played || 0, won: r.wins || 0, drawn: r.draws || 0, lost: r.losses || 0,
+    gf: m ? +m[1] : 0, ga: m ? +m[2] : 0, gd: r.goalConDiff == null ? 0 : r.goalConDiff,
+    points: r.pts || 0, form: ''
+  };
+}
+async function fmStandings(env, league) {
+  const fmId = AF_TO_FM_LEAGUE[league];
+  if (!fmId) return null;
+  const j = await fmLeagueRaw(env, fmId);
+  const tbl = j.table && j.table[0] && j.table[0].data && j.table[0].data.table && j.table[0].data.table.all;
+  if (!tbl || !tbl.length) return null;
+  return { league: { id: league, name: (j.details && j.details.name) || '' }, standings: tbl.map(fmStandingRow) };
+}
+// Absolute-URL fetch for FotMob's data host (fetchAllUrl links). Workers
+// fetch handles the gzip encoding transparently.
+async function fmFetchAbs(env, url, cacheKey) {
+  return cached(env, cacheKey, 3600, async () => {
+    let res;
+    try { res = await fetchTimeout(url, { headers: UA }); }
+    catch (e) { markSource('fotmob', false); throw e; }
+    if (!res.ok) { markSource('fotmob', false); throw new HttpError(502, 'fotmob ' + res.status); }
+    markSource('fotmob', true);
+    return res.json();
+  });
+}
+async function fmScorers(env, league) {
+  const fmId = AF_TO_FM_LEAGUE[league];
+  if (!fmId) return null;
+  const j = await fmLeagueRaw(env, fmId);
+  const players = (j.stats && j.stats.players) || [];
+  const goalsEntry = players.find(p => /top scorer/i.test(p.header || ''));
+  const topThree = (goalsEntry && goalsEntry.topThree) || [];
+  let rows = null;
+  if (goalsEntry && goalsEntry.fetchAllUrl) {
+    const g = await fmFetchAbs(env, goalsEntry.fetchAllUrl, 'fm:stats:' + fmId + ':goals');
+    const list = (g.TopLists && g.TopLists[0] && g.TopLists[0].StatList) || [];
+    // Assists, joined by participant id, so the app's goals+assists shape holds.
+    const assistsById = new Map();
+    const astEntry = players.find(p => /^\s*assists\s*$/i.test(p.header || ''));
+    if (astEntry && astEntry.fetchAllUrl) {
+      try {
+        const a = await fmFetchAbs(env, astEntry.fetchAllUrl, 'fm:stats:' + fmId + ':assists');
+        ((a.TopLists && a.TopLists[0] && a.TopLists[0].StatList) || []).forEach(r => assistsById.set(r.ParticiantId, r.StatValue));
+      } catch (e) { /* goals without assists is still useful */ }
+    }
+    rows = list.map(r => ({
+      player: r.ParticipantName || '?',
+      team: { id: r.TeamId ? 'fm-' + r.TeamId : '', name: r.TeamName || '', logo: r.TeamId ? FM_TEAM_LOGO(r.TeamId) : '' },
+      goals: Math.round(r.StatValue || 0), assists: Math.round(assistsById.get(r.ParticiantId) || 0), played: r.MatchesPlayed || 0
+    })).filter(r => r.goals > 0);
+  }
+  if ((!rows || !rows.length) && topThree.length) {
+    rows = topThree.map(t => ({
+      player: t.name || '?',
+      team: { id: t.teamId ? 'fm-' + t.teamId : '', name: t.teamName || '', logo: t.teamId ? FM_TEAM_LOGO(t.teamId) : '' },
+      goals: (t.stat && t.stat.value) || t.value || 0, assists: 0, played: 0
+    })).filter(r => r.goals > 0);
+  }
+  if (!rows || !rows.length) return null;
+  return { scorers: rows.slice(0, 20) };
+}
+/* ---------- match details from FotMob (fm- fixtures) ----------
+   Ratings come from the lineup's performance.rating (FotMob rating);
+   positions use playerStats usualPosition: 0 GK, 1 DEF, 2 MID, 3 FWD. */
+const FM_POS = { 0: 'G', 1: 'D', 2: 'M', 3: 'F' };
+function fmDetailFixture(d) {
+  const g = d.general || {};
+  const h = d.header || {};
+  const st = h.status || {};
+  const teams = h.teams || [];
+  const home = teams[0] || {}, away = teams[1] || {};
+  const infoBox = (d.content && d.content.matchFacts && d.content.matchFacts.infoBox) || {};
+  const tourney = infoBox.Tournament || {};
+  const parentId = tourney.parentLeagueId;
+  const afId = parentId != null ? FM_LEAGUE_TO_AF[parentId] : undefined;
+  const m = {
+    id: g.matchId, timeTS: Date.parse(st.utcTime || g.matchTimeUTC || '') || Date.now(),
+    status: st, home: { id: home.id, name: home.name, score: home.score }, away: { id: away.id, name: away.name, score: away.score }
+  };
+  const f = fmFixture(m, afId || 999002, tourney.leagueName || g.leagueName || '');
+  f.id = 'fm-' + (g.matchId || '');
+  f.venue = (infoBox.Stadium && infoBox.Stadium.name) || '';
+  if (tourney.roundName) f.league.round = 'Matchday ' + tourney.roundName;
+  // Goalscorers from the header goals (minute, scorer, team, own goal).
+  const scorers = [];
+  const goalLists = [[(h.events && h.events.homeTeamGoals) || {}, 'home'], [(h.events && h.events.awayTeamGoals) || {}, 'away']];
+  for (const [dict, team] of goalLists) {
+    for (const arr of Object.values(dict)) {
+      for (const ev of (arr || [])) {
+        const row = goalRow(ev.time, ev.player && ev.player.name, team, !!ev.ownGoal);
+        if (row) scorers.push(row);
+      }
+    }
+  }
+  if (scorers.length) f.scorers = scorers.sort((a, b) => (a.min || 0) - (b.min || 0));
+  return f;
+}
+function fmDetailEvents(d, homeId, awayId) {
+  const evs = (((d.content || {}).matchFacts || {}).events || {}).events || [];
+  const out = [];
+  for (const e of evs) {
+    const team = e.isHome ? 'fm-' + homeId : 'fm-' + awayId;
+    const min = e.time == null ? null : +e.time;
+    const extra = e.overloadTime || null;
+    if (e.type === 'Goal') {
+      const pen = e.goalDescriptionKey === 'penalty' || /penalty/i.test(e.goalDescription || '');
+      out.push({ min, extra, team, player: (e.player && e.player.name) || '', assist: '', type: 'Goal', detail: e.ownGoal ? 'Own Goal' : pen ? 'Penalty' : 'Normal Goal' });
+    } else if (e.type === 'Card') {
+      const card = String(e.card || '').toLowerCase();
+      out.push({ min, extra, team, player: (e.player && e.player.name) || '', assist: '', type: 'Card', detail: card === 'red' ? 'Red Card' : (card === 'secondyellow' || card === 'second yellow') ? 'Second Yellow card' : 'Yellow Card' });
+    } else if (e.type === 'Substitution' && Array.isArray(e.swap) && e.swap.length >= 2) {
+      out.push({ min, extra, team, player: e.swap[0].name || '', assist: e.swap[1].name || '', type: 'subst', detail: 'Substitution' });
+    }
+  }
+  out.sort((a, b) => (a.min || 0) - (b.min || 0));
+  return out;
+}
+function fmDetailStats(d, homeId, awayId) {
+  const groups = (((d.content || {}).stats || {}).Periods || {}).All || {};
+  const rowsH = [], rowsA = [];
+  for (const g of (groups.stats || [])) {
+    for (const s of (g.stats || [])) {
+      const vals = s.stats || [];
+      if (vals.length < 2) continue;
+      rowsH.push({ type: s.title || '', value: vals[0] == null ? '' : String(vals[0]) });
+      rowsA.push({ type: s.title || '', value: vals[1] == null ? '' : String(vals[1]) });
+    }
+  }
+  if (!rowsH.length) return [];
+  return [{ team: 'fm-' + homeId, rows: rowsH }, { team: 'fm-' + awayId, rows: rowsA }];
+}
+function fmDetailLineups(d) {
+  const lu = (d.content || {}).lineup || {};
+  const ps = (d.content || {}).playerStats || {};
+  const posOf = pl => {
+    const up = ps[String(pl.id)] && ps[String(pl.id)].usualPosition;
+    return (up != null && FM_POS[up] !== undefined) ? FM_POS[up] : '';
+  };
+  const player = pl => ({ player: pl.name || '?', number: pl.shirtNumber != null ? +pl.shirtNumber : null, pos: posOf(pl), rating: pl.performance && pl.performance.rating != null ? +pl.performance.rating : null });
+  const side = t => {
+    if (!t) return null;
+    return { formation: t.formation || '', coach: (t.coach && t.coach.name) || '', xi: (t.starters || []).map(player), subs: (t.subs || []).map(player) };
+  };
+  const out = {};
+  const h = side(lu.homeTeam), a = side(lu.awayTeam);
+  if (h) out.home = h;
+  if (a) out.away = a;
+  return out;
+}
+async function getFmFixture(env, rawNum) {
+  const num = +rawNum;
+  if (!num) throw new HttpError(400, 'bad id');
+  // 2-minute cache: live details move fast, and FotMob has no quota to
+  // protect; a finished match's cached copy is served stale for 24h if
+  // FotMob has already pruned its details.
+  const d = await cached(env, 'fm:match:' + num, 120, async () => {
+    const j = await fmGet('/matchDetails', { matchId: num });
+    if (!j || !j.header) throw new HttpError(404, 'not found');
+    return j;
+  });
+  const fixture = fmDetailFixture(d);
+  const homeId = (d.header.teams && d.header.teams[0] && d.header.teams[0].id) || '';
+  const awayId = (d.header.teams && d.header.teams[1] && d.header.teams[1].id) || '';
+  return {
+    fixture,
+    stats: fmDetailStats(d, homeId, awayId),
+    events: fmDetailEvents(d, homeId, awayId),
+    lineups: fmDetailLineups(d),
+    stale: d.stale
+  };
 }
 
 /* ---------- normalising: API-Football ---------- */
@@ -335,74 +707,6 @@ async function espnLiveFixtures(env) {
     return { fixtures: out.sort(sortFx) };
   });
 }
-/* ---------- normalising: SportScore (no key, defensive) ---------- */
-function ssTeam(v) {
-  if (typeof v === 'string') return { id: 'ss-' + v.toLowerCase().replace(/[^a-z0-9]+/g, '-'), name: v, logo: '' };
-  const o = v || {};
-  const name = o.name || o.displayName || o.shortName || o.title || '?';
-  return { id: 'ss-' + (o.id || o.slug || String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-')), name, logo: o.logo || o.crest || o.image || '' };
-}
-function ssScore(m) {
-  const n2 = v => { const x = parseInt(v, 10); return isNaN(x) ? null : x; };
-  const s = m.score || m.scores || m.result || m.fullTime || m.full_time;
-  if (typeof s === 'string') { const mm = /(\d+)\s*[-:–]\s*(\d+)/.exec(s); return mm ? [+mm[1], +mm[2]] : [null, null]; }
-  if (s && typeof s === 'object') {
-    return [n2(s.home ?? s.home_score ?? s.homeScore ?? s.homeTeam ?? s.h), n2(s.away ?? s.away_score ?? s.awayScore ?? s.awayTeam ?? s.a)];
-  }
-  return [n2(m.home_score), n2(m.away_score)];
-}
-function ssState(m) {
-  const raw = typeof m.status === 'string' ? m.status : (m.status && (m.status.type || m.status.state || m.status.short || m.status.name)) || m.state || m.match_status || '';
-  const s = String(raw).toLowerCase();
-  if (/live|in.?play|1h|2h|^ht$|paused|extra.?time|penalt/.test(s)) return 'live';
-  if (/ft\b|finished|full.?time|ended|final/.test(s)) return 'finished';
-  if (/postponed|suspended/.test(s)) return 'postponed';
-  if (/cancel/.test(s)) return 'cancelled';
-  return 'upcoming';
-}
-function ssFixture(m) {
-  if (!m || typeof m !== 'object') return null;
-  const rawDate = m.date || m.start_time || m.startTime || m.kickoff || m.datetime || m.time || m.start_date;
-  const ts = rawDate ? Math.floor(Date.parse(rawDate) / 1000) : NaN;
-  if (!isFinite(ts)) return null;
-  const home = ssTeam(m.home_team || m.homeTeam || m.home);
-  const away = ssTeam(m.away_team || m.awayTeam || m.away);
-  if (home.name === '?' || away.name === '?') return null;
-  const [hg, ag] = ssScore(m);
-  const state = ssState(m);
-  const lg = m.league || m.competition || m.tournament || {};
-  const leagueName = typeof lg === 'string' ? lg : (lg.name || lg.title || '');
-  // SportScore matches carry no reliable league id for our numbering, so
-  // last-resort fixtures are grouped under one placeholder league.
-  return {
-    id: 'ss-' + (m.id || m.match_id || m.slug || (ts + '-' + home.id + '-' + away.id)),
-    ts, state, short: state === 'live' ? 'LIVE' : state === 'finished' ? 'FT' : 'NS',
-    elapsed: typeof m.minute === 'number' ? m.minute : null, venue: m.venue || '',
-    league: { id: 999001, name: leagueName || 'SportScore', logo: '', country: '', round: '' },
-    home, away, hg, ag
-  };
-}
-async function ssDayFixtures(env, ds) {
-  return cached(env, 'ss:day:' + ds, 300, async () => {
-    const j = await sportscoreGet('matches/', { sport: 'football', limit: 50, src: 'sultanscore' });
-    const list = j.matches || j.data || j.response || [];
-    if (!Array.isArray(list)) throw new HttpError(502, 'sportscore shape');
-    return { fixtures: list.map(ssFixture).filter(f => f && utcDate(f.ts) === ds).sort(sortFx) };
-  });
-}
-async function ssLiveFixtures(env) {
-  const today = new Date().toISOString().slice(0, 10);
-  return cached(env, 'ss:live:' + today, ttl(env, 'live'), async () => {
-    const j = await sportscoreGet('matches/', { sport: 'football', limit: 50, src: 'sultanscore' });
-    const list = j.matches || j.data || j.response || [];
-    if (!Array.isArray(list)) throw new HttpError(502, 'sportscore shape');
-    return { fixtures: list.map(ssFixture).filter(f => f && f.state === 'live').sort(sortFx) };
-  });
-}
-const sortFx = (a, b) => a.ts - b.ts || a.league.id - b.league.id;
-const utcDate = sec => new Date(sec * 1000).toISOString().slice(0, 10);
-const addUtcDay = (ds, n) => new Date(Date.parse(ds + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10);
-
 /* ---------- fixtures by day / live ---------- */
 async function dayFrom(env, p, src, ds) {
   const todayUtc = utcDate(Date.now() / 1000);
@@ -419,7 +723,15 @@ async function dayFrom(env, p, src, ds) {
 /* Cross-provider fallback for one day/source. Quota economy: the alternate
    provider is tried ONLY when the primary returns nothing (failure is
    surfaced by cached() as a stale copy when one exists, or as an empty
-   result here) — never on every request. Order: other keyed provider, then ESPN, then SportScore. */
+   result here) — never on every request. Order: other keyed provider,
+   then ESPN, then FotMob. */
+// One call per tracked league, in parallel; returns the combined fixture
+// list (or []). The day + live fallback chains share it so the "try every
+// league, keep the first hit" pattern lives in one place.
+async function fixturesFromAllLeagues(env, leagueIds, ds, dayFn) {
+  const settled = await Promise.allSettled(leagueIds.map(id => dayFn(env, id, ds)));
+  return settled.filter(r => r.status === 'fulfilled').flatMap(r => r.value.fixtures).sort(sortFx);
+}
 function altPlan(p, src, leagueIds) {
   const ids = [...leagueIds];
   if (src === 'fd') return { mock: false, af: new Set(ids), fd: new Set(), allowed: p.allowed };
@@ -440,18 +752,13 @@ async function dayFromWithFallback(env, p, src, ds) {
       if (alt.fixtures && alt.fixtures.length) return Object.assign({}, alt, { partial: true });
     } catch (e) { /* fall through to ESPN */ }
   }
-  // Last resort: ESPN needs no key.
-  try {
-    const settled = await Promise.allSettled(leagueIds.map(id => espnDayFixtures(env, id, ds)));
-    const out = settled.filter(r => r.status === 'fulfilled').flatMap(r => r.value.fixtures).sort(sortFx);
-    if (out.length) return { fixtures: out, partial: true };
-  } catch (e) { /* fall through to SportScore */ }
-  // Final fallback: SportScore, no key (~10k req/day/IP, no date filter).
-  // If its shape changed, ssFixture returns nulls and this is a no-op.
-  try {
-    const ss = await ssDayFixtures(env, ds);
-    if (ss.fixtures && ss.fixtures.length) return { fixtures: ss.fixtures, partial: true };
-  } catch (e) { /* give up below */ }
+  // Keyless fallbacks, in order: ESPN, then FotMob (real league ids via
+  // the verified primaryId map). Only when the keyed sources returned
+  // nothing for this day.
+  const espnOut = await fixturesFromAllLeagues(env, leagueIds, ds, espnDayFixtures);
+  if (espnOut.length) return { fixtures: espnOut, partial: true };
+  const fmOut = await fixturesFromAllLeagues(env, leagueIds, ds, fmDayFixtures);
+  if (fmOut.length) return { fixtures: fmOut, partial: true };
   if (primaryErr) throw primaryErr;
   return primary;
 }
@@ -588,19 +895,15 @@ async function getLive(env) {
       if (fresh.length) { out = [...out, ...fresh].sort(sortFx); partial = true; }
     } catch (e) { /* fall through to ESPN */ }
   }
-  // Both keyed providers failed (or returned nothing live): ESPN, no key.
-  if (!out.length) {
+  // Both keyed providers failed (or returned nothing live): keyless
+  // fallbacks in order — ESPN, then FotMob. An empty live list is the
+  // honest answer when no tracked league has a live match.
+  for (const get of [espnLiveFixtures, fmLiveFixtures]) {
+    if (out.length) break;
     try {
-      const espn = await espnLiveFixtures(env);
-      if (espn.fixtures.length) { out = espn.fixtures; partial = true; }
-    } catch (e) { /* fall through to SportScore */ }
-  }
-  // Final fallback: SportScore, no key.
-  if (!out.length) {
-    try {
-      const ss = await ssLiveFixtures(env);
-      if (ss.fixtures.length) { out = ss.fixtures; partial = true; }
-    } catch (e) { /* keep the original error below */ }
+      const r = await get(env);
+      if (r.fixtures.length) { out = r.fixtures; partial = true; }
+    } catch (e) { /* try the next source */ }
   }
   if (!ok.length && !out.length) throw settled[0] && settled[0].reason instanceof HttpError ? settled[0].reason : new HttpError(502, 'no data');
   return { fixtures: out, stale: stale || undefined, partial: partial || undefined };
@@ -662,12 +965,24 @@ async function getStandings(env, rawLeague) {
         if (table && table.length) return { league: { id: league, name: (j.competition && j.competition.name) || '' }, standings: table.map(fdStandingRow) };
       } catch (e) { /* try the next source */ }
     }
-    // 3) ESPN, no key
+    // 3) FotMob (no key) — the only standings source for AF-only leagues
+    // while AF standings fail (see fmStandings). Only reached when AF +
+    // FD have nothing, so FD-covered leagues never change.
+    try {
+      const fm = await fmStandings(env, league);
+      if (fm) return fm;
+    } catch (e) { /* try the next source */ }
+    // 4) ESPN, no key — except Egypt (233): ESPN answers
+    // {"code":404,"message":"League 'egy.1' not found"} for egy.1 standings
+    // (verified 2026-11-25 09:33 UTC), so there is no ESPN standings
+    // fallback for Egypt; AF is the only standings source there.
     const slug = ESPN_SLUG_BY_LEAGUE[league];
-    if (slug) {
-      const j = await espnGet(slug + '/standings', { season: currentSeason() });
-      const entries = j.children && j.children[0] && j.children[0].standings && j.children[0].standings.entries;
-      if (entries && entries.length) return { league: { id: league, name: (j.name || j.shortName || '') }, standings: entries.map(espnStandingRow).sort((a, b) => a.position - b.position) };
+    if (slug && league !== 233) {
+      try {
+        const j = await espnGet(slug + '/standings', { season: currentSeason() });
+        const entries = j.children && j.children[0] && j.children[0].standings && j.children[0].standings.entries;
+        if (entries && entries.length) return { league: { id: league, name: (j.name || j.shortName || '') }, standings: entries.map(espnStandingRow).sort((a, b) => a.position - b.position) };
+      } catch (e) { /* no more sources */ }
     }
     throw new HttpError(502, 'standings unavailable');
   });
@@ -703,7 +1018,13 @@ async function getScorers(env, rawLeague) {
         if (rows.length) return { scorers: rows.slice(0, 20) };
       } catch (e) { /* try the next source */ }
     }
-    // 3) ESPN leaders (best effort — the shape varies by league, so parse defensively).
+    // 3) FotMob (no key) — full top-scorers list with assists, see fmScorers.
+    // Only reached when AF + FD have nothing.
+    try {
+      const fm = await fmScorers(env, league);
+      if (fm) return fm;
+    } catch (e) { /* try the next source */ }
+    // 4) ESPN leaders (best effort — the shape varies by league, so parse defensively).
     const slug = ESPN_SLUG_BY_LEAGUE[league];
     if (slug) {
       try {
@@ -816,6 +1137,9 @@ async function getH2H(env, homeRaw, awayRaw) {
 
 /* ---------- match details ---------- */
 async function getFixture(env, raw) {
+  // FotMob-sourced fixtures (fm- ids) get their detail from FotMob's
+  // matchDetails endpoint — stats, events, lineups and ratings included.
+  if (String(raw || '').startsWith('fm-')) return getFmFixture(env, raw.slice(3));
   const { src, num } = parseId(raw);
   const p = plan(env);
   if (src === 'fd') {
@@ -899,9 +1223,32 @@ function normalizeLineups(rows, fixture, ratings) {
   return out;
 }
 
+/* ---------- cache warming (approved 2026-11-25) ----------
+   Warms ONLY the cheap sources, never API-Football: a warm that spent AF
+   would burn the 100/day budget (already at 85/100 on 2026-11-25 09:28 UTC).
+   - football-data.org day fixtures for today (its 10 leagues, no daily cap)
+   - ESPN day fixtures for today (no key)
+   - FotMob's whole day in one call (no key; all leagues at once)
+   Called by GET /warm (manual test) and by the Cron Trigger in
+   wrangler.toml ([triggers] crons, every 30 minutes) via scheduled(). */
+export async function warmCache(env) {
+  const p = plan(env);
+  const today = new Date().toISOString().slice(0, 10);
+  const jobs = [];
+  if (p.fd.size) jobs.push(dayFrom(env, p, 'fd', today).catch(() => null));
+  jobs.push(...Object.keys(ESPN_SLUG_BY_LEAGUE).map(id => espnDayFixtures(env, +id, today).catch(() => null)));
+  // FotMob's whole day in ONE call (all leagues), so its fallback cache is
+  // warm too. No key, no AF budget involved.
+  jobs.push(fmDayRaw(env, today).catch(() => null));
+  const settled = await Promise.allSettled(jobs);
+  return { warmed: settled.filter(r => r.status === 'fulfilled' && r.value).length, attempted: jobs.length, date: today };
+}
+
 /* ---------- entry ---------- */
-export async function handle(request, env) {
+export async function handle(request, env, ctx) {
   env = env || {};
+  if (ctx && typeof ctx.waitUntil === 'function') bgRunner = ctx.waitUntil.bind(ctx);
+  else bgRunner = null;
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
   if (request.method !== 'GET') return json({ error: 'method not allowed' }, 405);
   const url = new URL(request.url);
@@ -919,10 +1266,19 @@ export async function handle(request, env) {
           footballData: { configured: sourceStatus.footballData.configured, leagues: p.fd.size, available: sourceStatus.footballData.available },
           apiFootball: { configured: sourceStatus.apiFootball.configured, leagues: p.af.size, available: sourceStatus.apiFootball.available, dailyUsed: afUsed, dailyBudget: AF_DAILY_LIMIT, budgetGuard: AF_DAILY_BUDGET },
           espn: { configured: true, keyless: true, available: sourceStatus.espn.available },
-          sportscore: { configured: true, keyless: true, available: sourceStatus.sportscore.available }
+          fotmob: { configured: true, keyless: true, unofficial: true, available: sourceStatus.fotmob.available },
+          sofascore: { configured: true, keyless: true, unofficial: true, available: sourceStatus.sofascore.available }
         }
       }, 200, 30);
     }
+    if (path === '/probe') {
+      const which = (q.get('source') || 'all').toLowerCase();
+      const out = {};
+      if (which === 'all' || which === 'fotmob') out.fotmob = await probeFotmob(env);
+      if (which === 'all' || which === 'sofascore') out.sofascore = await probeSofascore(env);
+      return json(out, 200, 0);
+    }
+    if (path === '/warm') return json(await warmCache(env), 200, 0);
     if (path === '/fixtures') return json(await getRange(env, +q.get('from'), +q.get('to')), 200, 20);
     if (path === '/version') return json({ version: LATEST_VERSION.version, downloadUrl: LATEST_VERSION.downloadUrl, notes: LATEST_VERSION.notes }, 200, 300);
     if (path === '/live') return json(await getLive(env), 200, 15);
